@@ -1,0 +1,8 @@
+/bin/
+*.pastel-tmp
+server/.pastel/
+**/.pastel/
+*.test
+/dist/
+/staging/
+server/

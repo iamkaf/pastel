@@ -1,0 +1,4 @@
+# Track the latest release of a Modrinth modpack.
+pack = "modrinth:aristea"
+memory = "4G"
+sync_on_run = true

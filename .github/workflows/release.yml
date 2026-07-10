@@ -1,0 +1,139 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pastel-release-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Bump and release
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Install Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify source
+        run: |
+          test -z "$(gofmt -l .)"
+          go mod verify
+          go vet ./...
+          go test -race ./...
+
+      - name: Bump patch version and tag
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --force origin main --tags
+          git checkout -B main origin/main
+
+          exact_tag="$(git tag --points-at HEAD --list 'v[0-9]*' --sort=-v:refname | head -n 1)"
+          if [[ -n "$exact_tag" ]]; then
+            version="${exact_tag#v}"
+            if gh release view "$exact_tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              echo "Pastel $exact_tag is already published."
+              echo "publish=false" >> "$GITHUB_OUTPUT"
+              echo "version=$version" >> "$GITHUB_OUTPUT"
+              echo "tag=$exact_tag" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            tag="$exact_tag"
+          else
+            latest="$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1)"
+            if [[ -z "$latest" ]]; then
+              version="0.1.0"
+            elif [[ "$latest" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+              version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.$((BASH_REMATCH[3] + 1))"
+            else
+              echo "Latest release tag is not vMAJOR.MINOR.PATCH: $latest" >&2
+              exit 1
+            fi
+            tag="v$version"
+            printf '%s\n' "$version" > VERSION
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add VERSION
+            git commit --allow-empty -m "Bump Pastel to $version"
+            git tag -a "$tag" -m "Pastel $version"
+            git push --atomic origin HEAD:main "refs/tags/$tag"
+          fi
+
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Build release archives
+        if: steps.version.outputs.publish == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          mkdir -p dist
+
+          build_archive() {
+            local os="$1"
+            local arch="$2"
+            local name="pastel-${os}-${arch}"
+            local binary="pastel"
+            if [[ "$os" == "windows" ]]; then
+              binary="pastel.exe"
+            fi
+
+            mkdir -p "dist/$name"
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
+              go build -trimpath -ldflags "-s -w -X main.version=$VERSION" \
+              -o "dist/$name/$binary" ./cmd/pastel
+            cp LICENSE README.md "dist/$name/"
+
+            if [[ "$os" == "windows" ]]; then
+              (cd dist && zip -qr "$name.zip" "$name")
+            else
+              tar -C dist -czf "dist/$name.tar.gz" "$name"
+            fi
+            rm -rf "dist/$name"
+          }
+
+          build_archive darwin amd64
+          build_archive darwin arm64
+          build_archive linux amd64
+          build_archive linux arm64
+          build_archive windows amd64
+          build_archive windows arm64
+          (cd dist && sha256sum ./*.tar.gz ./*.zip > SHA256SUMS)
+
+      - name: Publish GitHub release
+        if: steps.version.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "$TAG" \
+            dist/*.tar.gz dist/*.zip dist/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" \
+            --verify-tag \
+            --title "Pastel $VERSION" \
+            --generate-notes
