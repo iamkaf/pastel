@@ -176,7 +176,55 @@ func TestResolveLocalMrpack(t *testing.T) {
 	}
 }
 
+func TestMrpackZipDirectoryEntries(t *testing.T) {
+	// Real .mrpack zips often include explicit directory records with a trailing
+	// slash (e.g. server-overrides/config/bonded/). These must not fail install.
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "dirs.mrpack")
+	if err := writeTestMrpackWithDirEntries(zipPath); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadMrpack(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(dir, "server")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	written, err := loaded.ApplyOverrides(root, SideServer)
+	if err != nil {
+		t.Fatalf("ApplyOverrides with zip directory entries: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "config", "bonded", "bonded-common.toml")); err != nil {
+		t.Fatalf("bonded config missing: %v (written=%v)", err, written)
+	}
+	// Empty override directories should still be created.
+	if st, err := os.Stat(filepath.Join(root, "config", "empty-only")); err != nil || !st.IsDir() {
+		t.Fatalf("empty override dir missing: err=%v", err)
+	}
+}
+
 func writeTestMrpack(path string) error {
+	return writeTestMrpackEntries(path, map[string]string{
+		"overrides/eula.txt":                "eula=true\n",
+		"overrides/config/demo.toml":        "client=1\n",
+		"overrides/mods/from-override.jar":  "fake-jar",
+		"server-overrides/config/demo.toml": "server=1\n",
+	}, nil)
+}
+
+func writeTestMrpackWithDirEntries(path string) error {
+	return writeTestMrpackEntries(path, map[string]string{
+		"server-overrides/config/bonded/bonded-common.toml": "x=1\n",
+	}, []string{
+		"server-overrides/config/",
+		"server-overrides/config/bonded/",
+		"server-overrides/config/empty-only/",
+	})
+}
+
+func writeTestMrpackEntries(path string, files map[string]string, dirs []string) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return err
@@ -204,13 +252,16 @@ func writeTestMrpack(path string) error {
 	if _, err := zw.Write([]byte(index)); err != nil {
 		return err
 	}
-	entries := map[string]string{
-		"overrides/eula.txt":                "eula=true\n",
-		"overrides/config/demo.toml":        "client=1\n",
-		"overrides/mods/from-override.jar":  "fake-jar",
-		"server-overrides/config/demo.toml": "server=1\n",
+	// Directory entries first, matching common zip tool ordering.
+	for _, name := range dirs {
+		if !strings.HasSuffix(name, "/") {
+			name += "/"
+		}
+		if _, err := w.Create(name); err != nil {
+			return err
+		}
 	}
-	for name, body := range entries {
+	for name, body := range files {
 		zw, err := w.Create(name)
 		if err != nil {
 			return err

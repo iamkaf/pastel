@@ -413,11 +413,20 @@ func extractZipPrefix(zipPath, prefix, destRoot string) ([]string, error) {
 		if rel == "" {
 			continue
 		}
+		// Zip tools often emit explicit directory entries with a trailing slash
+		// (e.g. server-overrides/config/bonded/). Strip it before path checks;
+		// validateMrpackPath rejects empty components and unclean paths.
+		isDir := strings.HasSuffix(name, "/") || zf.FileInfo().IsDir()
+		if isDir {
+			rel = strings.TrimSuffix(rel, "/")
+			if rel == "" {
+				continue
+			}
+		}
 		if err := validateMrpackPath(rel); err != nil {
 			return written, fmt.Errorf("override %s: %w", name, err)
 		}
-		// Skip directory entries
-		if strings.HasSuffix(name, "/") || zf.FileInfo().IsDir() {
+		if isDir {
 			if err := root.MkdirAll(filepath.FromSlash(rel), 0o755); err != nil {
 				return written, err
 			}
