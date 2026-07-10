@@ -272,4 +272,3 @@ func writeTestMrpackEntries(path string, files map[string]string, dirs []string)
 	}
 	return w.Close()
 }
-
