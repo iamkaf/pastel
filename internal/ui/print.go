@@ -168,6 +168,7 @@ func HelpBlock() {
 	fmt.Fprintln(Err, "  "+Dim("aliases:")+" install→get/add · console→attach/logs/terminal")
 	fmt.Fprintln(Err, "  "+Blue("./pastel run -f")+"          Foreground mode (debug)")
 	fmt.Fprintln(Err, "  "+Blue("./pastel version")+"         Show "+Brand()+" version")
+	fmt.Fprintln(Err, "  "+Blue("./pastel self-update")+"     Install the latest verified "+Brand()+" release")
 	fmt.Fprintln(Err, "  "+Blue("./pastel pack …")+"          Author/publish packs (for Kaf)")
 	Blank()
 	fmt.Fprintln(Err, Pink("Optional flags"))

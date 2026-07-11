@@ -51,6 +51,8 @@ func Run(args []string) error {
 		return friendly(cmdStop(args[1:]))
 	case "update", "upgrade":
 		return friendly(cmdUpdate(args[1:]))
+	case "self-update", "selfupdate":
+		return friendly(cmdSelfUpdate(args[1:]))
 	case "pack":
 		return cmdPack(args[1:])
 	case "__hold-fifo":

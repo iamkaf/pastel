@@ -82,6 +82,7 @@ By running a Minecraft server with Pastel, you indicate your agreement to [Mojan
 | `pastel refresh` | Reconcile the server with the current pin |
 | `pastel refresh -dry-run` | Preview downloads, updates, and pruning |
 | `pastel update` | Choose and install another Modrinth or Maven pack version |
+| `pastel self-update` | Download, verify, and install the latest Pastel release |
 | `pastel run` | Refresh when enabled, then start in the background with crash restarts |
 | `pastel run -f` | Run in the foreground; required on Windows today |
 | `pastel console` | Follow the live log and send server commands |
