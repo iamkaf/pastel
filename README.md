@@ -16,7 +16,7 @@
   <a href="#contributing">Contributing</a>
 </p>
 
-Pastel turns a Modrinth modpack into a managed dedicated server. It downloads and verifies the server-side pack files, installs the required loader and Java runtime, starts Minecraft, exposes a live console, and keeps the server on the pack version you chose.
+Pastel turns a Modrinth modpack into a managed dedicated server. It downloads and verifies the server-side pack files, installs the required loader and Java runtime, starts Minecraft, exposes a live console, restarts crashed background servers, and keeps the server on the pack version you chose.
 
 ## For server owners
 
@@ -82,7 +82,8 @@ By running a Minecraft server with Pastel, you indicate your agreement to [Mojan
 | `pastel refresh` | Reconcile the server with the current pin |
 | `pastel refresh -dry-run` | Preview downloads, updates, and pruning |
 | `pastel update` | Choose and install another Modrinth or Maven pack version |
-| `pastel run` | Refresh when enabled, then start in the background |
+| `pastel self-update` | Download, verify, and install the latest Pastel release |
+| `pastel run` | Refresh when enabled, then start in the background with crash restarts |
 | `pastel run -f` | Run in the foreground; required on Windows today |
 | `pastel console` | Follow the live log and send server commands |
 | `pastel stop` | Ask Minecraft to save and stop, then escalate if necessary |
@@ -90,6 +91,8 @@ By running a Minecraft server with Pastel, you indicate your agreement to [Mojan
 | `pastel version` | Print the Pastel version |
 
 `sync` remains an alias for `refresh`; `upgrade` remains an alias for `update`.
+
+After a background server reaches Minecraft's ready state, Pastel restarts it five seconds after an unexpected non-zero exit. Set `auto_restart = false` to disable this behavior. Pastel adds the setting with its `true` default when it loads an older `server.pastel`, making the option visible without changing existing behavior. A normal `pastel stop` or `stop` console command stays stopped. Startup failures also stay stopped so an invalid pack cannot enter a restart loop. Foreground mode remains attached to one Minecraft process and does not auto-restart.
 
 ### `server.pastel`
 
@@ -99,6 +102,7 @@ The generated file is intentionally small:
 pack = "modrinth:aristea"
 memory = "4G"
 sync_on_run = true
+auto_restart = true
 ```
 
 | Key | Meaning |
@@ -106,6 +110,7 @@ sync_on_run = true
 | `pack` | Required pack pin: Modrinth, URL, local path, or Maven coordinate |
 | `memory` | Java maximum heap, such as `4G`; defaults to `4G` |
 | `sync_on_run` | Refresh before each run; defaults to `true` |
+| `auto_restart` | Restart a ready background server after a crash; defaults to `true` |
 | `repositories` | Ordered Maven bases for short coordinates; there is no default |
 | `java` | Optional Java executable override |
 | `server_dir` | Optional server directory relative to `server.pastel` |

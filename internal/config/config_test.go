@@ -53,7 +53,19 @@ func TestSyncOnRunDefault(t *testing.T) {
 	}
 }
 
-func TestWriteSeedsSyncOnRun(t *testing.T) {
+func TestAutoRestartDefault(t *testing.T) {
+	cfg := &Config{}
+	if !cfg.ShouldAutoRestart() {
+		t.Fatal("default should auto restart")
+	}
+	disabled := false
+	cfg.AutoRestart = &disabled
+	if cfg.ShouldAutoRestart() {
+		t.Fatal("explicit false")
+	}
+}
+
+func TestWriteSeedsDiscoverableDefaults(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "server.pastel")
 	if err := Write(WriteOptions{Path: path, Pack: "modrinth:example", Memory: "4G"}); err != nil {
@@ -66,12 +78,78 @@ func TestWriteSeedsSyncOnRun(t *testing.T) {
 	if !strings.Contains(string(data), "sync_on_run = true") {
 		t.Fatalf("expected seeded sync_on_run, got:\n%s", data)
 	}
+	if !strings.Contains(string(data), "auto_restart = true") {
+		t.Fatalf("expected seeded auto_restart, got:\n%s", data)
+	}
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !cfg.ShouldSyncOnRun() {
 		t.Fatal("loaded config should sync on run")
+	}
+	if !cfg.ShouldAutoRestart() {
+		t.Fatal("loaded config should auto restart")
+	}
+}
+
+func TestLoadAddsMissingAutoRestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "server.pastel")
+	if err := os.WriteFile(path, []byte(`pack = "modrinth:example"`), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.ShouldAutoRestart() {
+		t.Fatal("migrated config should auto restart")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(data), "auto_restart = true") != 1 {
+		t.Fatalf("expected one appended option, got:\n%s", data)
+	}
+	if _, err := Load(path); err != nil {
+		t.Fatal(err)
+	}
+	data, err = os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(data), "auto_restart = true") != 1 {
+		t.Fatalf("option must not be appended twice, got:\n%s", data)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o640 {
+		t.Fatalf("mode changed to %o", info.Mode().Perm())
+	}
+}
+
+func TestLoadPreservesDisabledAutoRestart(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "server.pastel")
+	body := "pack = \"modrinth:example\"\nauto_restart = false\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ShouldAutoRestart() {
+		t.Fatal("explicit false must be preserved")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != body {
+		t.Fatalf("explicit config changed:\n%s", data)
 	}
 }
 

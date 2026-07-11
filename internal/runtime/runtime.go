@@ -36,6 +36,8 @@ type Options struct {
 	ModCount int
 	// Foreground keeps the old attach-to-this-terminal behavior.
 	Foreground bool
+	// AutoRestart restarts a ready background server after a crash.
+	AutoRestart bool
 }
 
 // Running reports whether this server's Minecraft process is alive.
@@ -232,7 +234,15 @@ func serverPIDs(root string) []int {
 
 func cleanupServerFiles(root string) {
 	_ = os.Remove(state.PIDPath(root))
+	stopSupervisor(root)
 	stopHold(root)
+}
+
+func stopSupervisor(root string) {
+	if pid, ok := readAlivePID(state.SupervisorPIDPath(root)); ok && pid != os.Getpid() {
+		_ = terminateSupervisor(pid)
+	}
+	_ = os.Remove(state.SupervisorPIDPath(root))
 }
 
 func stopHold(root string) {

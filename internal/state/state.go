@@ -43,6 +43,11 @@ func HoldPIDPath(serverRoot string) string {
 	return filepath.Join(Dir(serverRoot), "hold.pid")
 }
 
+// SupervisorPIDPath is the Pastel process that owns and restarts the server.
+func SupervisorPIDPath(serverRoot string) string {
+	return filepath.Join(Dir(serverRoot), "supervisor.pid")
+}
+
 // ConsoleInPath is the FIFO used to send console commands to the server.
 func ConsoleInPath(serverRoot string) string {
 	return filepath.Join(Dir(serverRoot), "console.in")

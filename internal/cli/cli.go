@@ -51,6 +51,8 @@ func Run(args []string) error {
 		return friendly(cmdStop(args[1:]))
 	case "update", "upgrade":
 		return friendly(cmdUpdate(args[1:]))
+	case "self-update", "selfupdate":
+		return friendly(cmdSelfUpdate(args[1:]))
 	case "pack":
 		return cmdPack(args[1:])
 	case "__hold-fifo":
@@ -59,6 +61,16 @@ func Run(args []string) error {
 			return fmt.Errorf("usage: pastel __hold-fifo <path>")
 		}
 		return runtime.HoldFIFO(args[1])
+	case "__supervise":
+		// Internal: own the background Java process and restart it after crashes.
+		if len(args) < 5 || args[3] != "--" {
+			return fmt.Errorf("usage: pastel __supervise <root> <auto-restart> -- <java> [args...]")
+		}
+		autoRestart, err := strconv.ParseBool(args[2])
+		if err != nil {
+			return fmt.Errorf("invalid auto-restart value: %w", err)
+		}
+		return runtime.Supervise(args[1], args[4], args[5:], autoRestart)
 	case "version", "-version", "--version":
 		ui.Banner()
 		ui.Detail("version " + Version)
@@ -450,18 +462,19 @@ func cmdRun(args []string) error {
 	}
 
 	return runtime.Start(runtime.Options{
-		Root:       cfg.Root(),
-		Java:       javaBin,
-		Xmx:        cfg.Xmx(),
-		Manifest:   manifest,
-		Jar:        jar,
-		ExtraArgs:  extra,
-		NoGUI:      cfg.UseNoGUI(),
-		Minecraft:  mc,
-		JavaMajor:  need,
-		LoaderKind: manifest.LoaderKind(),
-		ModCount:   manifest.ModCount(),
-		Foreground: *foreground || *fgShort,
+		Root:        cfg.Root(),
+		Java:        javaBin,
+		Xmx:         cfg.Xmx(),
+		Manifest:    manifest,
+		Jar:         jar,
+		ExtraArgs:   extra,
+		NoGUI:       cfg.UseNoGUI(),
+		Minecraft:   mc,
+		JavaMajor:   need,
+		LoaderKind:  manifest.LoaderKind(),
+		ModCount:    manifest.ModCount(),
+		Foreground:  *foreground || *fgShort,
+		AutoRestart: cfg.ShouldAutoRestart(),
 	})
 }
 
