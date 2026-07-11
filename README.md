@@ -18,6 +18,12 @@
 
 Pastel turns a Modrinth modpack into a managed dedicated server. It downloads and verifies the server-side pack files, installs the required loader and Java runtime, starts Minecraft, exposes a live console, restarts crashed background servers, and keeps the server on the pack version you chose.
 
+### Highlights
+
+- Restarts a background server five seconds after an unexpected crash; set `auto_restart = false` when another process manager should own restarts.
+- Updates itself with `pastel self-update`, verifying the release archive against its published SHA-256 checksum before replacing the executable.
+- Keeps clean shutdowns and startup failures stopped, so broken packs do not enter restart loops.
+
 ## For server owners
 
 ### Platform support
