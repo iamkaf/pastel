@@ -50,6 +50,11 @@ type Config struct {
 	//	sync_on_run = false
 	SyncOnRun *bool `toml:"sync_on_run"`
 
+	// AutoRestart restarts a background server after it reached readiness and
+	// then exited unexpectedly. Default true; Load writes the default into
+	// older config files so the option is discoverable.
+	AutoRestart *bool `toml:"auto_restart"`
+
 	// path is the absolute path to the config file (not in TOML).
 	path string
 }
@@ -99,6 +104,15 @@ func (c *Config) ShouldSyncOnRun() bool {
 		return true
 	}
 	return *c.SyncOnRun
+}
+
+// ShouldAutoRestart reports whether crashed background servers should restart.
+// Default true when unset.
+func (c *Config) ShouldAutoRestart() bool {
+	if c == nil || c.AutoRestart == nil {
+		return true
+	}
+	return *c.AutoRestart
 }
 
 // MavenRepositories returns the ordered Maven base URLs for short coordinates.
@@ -152,7 +166,29 @@ func Load(path string) (*Config, error) {
 	if strings.TrimSpace(c.Pack) == "" {
 		return nil, fmt.Errorf("%s: pack is required", abs)
 	}
+	if c.AutoRestart == nil {
+		if err := appendAutoRestartDefault(abs, data); err != nil {
+			return nil, fmt.Errorf("add auto_restart to %s: %w", abs, err)
+		}
+		enabled := true
+		c.AutoRestart = &enabled
+	}
 	return &c, nil
+}
+
+func appendAutoRestartDefault(path string, data []byte) error {
+	var b strings.Builder
+	b.Write(data)
+	if len(data) > 0 && data[len(data)-1] != '\n' {
+		b.WriteByte('\n')
+	}
+	b.WriteString("# Restart the server after an unexpected crash.\n")
+	b.WriteString("auto_restart = true\n")
+	mode := os.FileMode(0o644)
+	if info, err := os.Stat(path); err == nil {
+		mode = info.Mode().Perm()
+	}
+	return os.WriteFile(path, []byte(b.String()), mode)
 }
 
 // WriteOptions creates or overwrites a friend-facing server.pastel.
@@ -181,6 +217,8 @@ func Write(opt WriteOptions) error {
 	// Explicit default so friends discover they can flip it while debugging mods/.
 	b.WriteString("# Set false so ./pastel run starts without re-downloading the pack.\n")
 	b.WriteString("sync_on_run = true\n")
+	b.WriteString("# Restart the server after an unexpected crash.\n")
+	b.WriteString("auto_restart = true\n")
 	if repos := normalizeRepos(opt.Repositories); len(repos) > 0 {
 		b.WriteString("repositories = [\n")
 		for _, r := range repos {

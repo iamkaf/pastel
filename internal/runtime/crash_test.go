@@ -37,14 +37,17 @@ func TestShouldRestartServer(t *testing.T) {
 	if err := crashed.Run(); err == nil {
 		t.Fatal("expected crash command to fail")
 	} else {
-		if !shouldRestartServer(err, true) {
+		if !shouldRestartServer(err, true, true) {
 			t.Fatal("ready server should restart after non-zero exit")
 		}
-		if shouldRestartServer(err, false) {
+		if shouldRestartServer(err, false, true) {
 			t.Fatal("startup failure must not restart")
 		}
+		if shouldRestartServer(err, true, false) {
+			t.Fatal("disabled auto restart must not restart")
+		}
 	}
-	if shouldRestartServer(nil, true) {
+	if shouldRestartServer(nil, true, true) {
 		t.Fatal("clean shutdown must not restart")
 	}
 }

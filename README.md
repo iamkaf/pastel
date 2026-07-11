@@ -91,7 +91,7 @@ By running a Minecraft server with Pastel, you indicate your agreement to [Mojan
 
 `sync` remains an alias for `refresh`; `upgrade` remains an alias for `update`.
 
-After a background server reaches Minecraft's ready state, Pastel restarts it five seconds after an unexpected non-zero exit. A normal `pastel stop` or `stop` console command stays stopped. Startup failures also stay stopped so an invalid pack cannot enter a restart loop. Foreground mode remains attached to one Minecraft process and does not auto-restart.
+After a background server reaches Minecraft's ready state, Pastel restarts it five seconds after an unexpected non-zero exit. Set `auto_restart = false` to disable this behavior. Pastel adds the setting with its `true` default when it loads an older `server.pastel`, making the option visible without changing existing behavior. A normal `pastel stop` or `stop` console command stays stopped. Startup failures also stay stopped so an invalid pack cannot enter a restart loop. Foreground mode remains attached to one Minecraft process and does not auto-restart.
 
 ### `server.pastel`
 
@@ -101,6 +101,7 @@ The generated file is intentionally small:
 pack = "modrinth:aristea"
 memory = "4G"
 sync_on_run = true
+auto_restart = true
 ```
 
 | Key | Meaning |
@@ -108,6 +109,7 @@ sync_on_run = true
 | `pack` | Required pack pin: Modrinth, URL, local path, or Maven coordinate |
 | `memory` | Java maximum heap, such as `4G`; defaults to `4G` |
 | `sync_on_run` | Refresh before each run; defaults to `true` |
+| `auto_restart` | Restart a ready background server after a crash; defaults to `true` |
 | `repositories` | Ordered Maven bases for short coordinates; there is no default |
 | `java` | Optional Java executable override |
 | `server_dir` | Optional server directory relative to `server.pastel` |

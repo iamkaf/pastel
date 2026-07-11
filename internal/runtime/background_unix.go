@@ -53,7 +53,7 @@ func startBackground(opt Options, java string, args []string) error {
 	}
 	logFile.Close()
 
-	supervisorArgs := []string{"__supervise", opt.Root, "--", java}
+	supervisorArgs := []string{"__supervise", opt.Root, strconv.FormatBool(opt.AutoRestart), "--", java}
 	supervisorArgs = append(supervisorArgs, args...)
 	cmd := exec.Command(self, supervisorArgs...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
@@ -112,7 +112,7 @@ func waitForServerPID(root string, exited <-chan error, timeout time.Duration) (
 // Supervise owns the background Java process. A server that has reached the
 // Minecraft ready message is restarted after a non-zero exit; clean shutdowns
 // and startup failures remain stopped.
-func Supervise(root, java string, args []string) error {
+func Supervise(root, java string, args []string, autoRestart bool) error {
 	logPath := state.ConsoleLogPath(root)
 	latestLog := filepath.Join(root, "logs", "latest.log")
 	for {
@@ -147,7 +147,7 @@ func Supervise(root, java string, args []string) error {
 		stdin.Close()
 		_ = os.Remove(state.PIDPath(root))
 		ready := logContainsDoneSince(logPath, startConsole) || logContainsDoneSince(latestLog, startLatest)
-		if !shouldRestartServer(err, ready) {
+		if !shouldRestartServer(err, ready, autoRestart) {
 			logFile.Close()
 			cleanupServerFiles(root)
 			return err
@@ -158,8 +158,8 @@ func Supervise(root, java string, args []string) error {
 	}
 }
 
-func shouldRestartServer(waitErr error, reachedReady bool) bool {
-	if !reachedReady || waitErr == nil {
+func shouldRestartServer(waitErr error, reachedReady, autoRestart bool) bool {
+	if !autoRestart || !reachedReady || waitErr == nil {
 		return false
 	}
 	exit, ok := waitErr.(*exec.ExitError)

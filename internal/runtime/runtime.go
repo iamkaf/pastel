@@ -36,6 +36,8 @@ type Options struct {
 	ModCount int
 	// Foreground keeps the old attach-to-this-terminal behavior.
 	Foreground bool
+	// AutoRestart restarts a ready background server after a crash.
+	AutoRestart bool
 }
 
 // Running reports whether this server's Minecraft process is alive.
