@@ -59,6 +59,12 @@ func Run(args []string) error {
 			return fmt.Errorf("usage: pastel __hold-fifo <path>")
 		}
 		return runtime.HoldFIFO(args[1])
+	case "__supervise":
+		// Internal: own the background Java process and restart it after crashes.
+		if len(args) < 4 || args[2] != "--" {
+			return fmt.Errorf("usage: pastel __supervise <root> -- <java> [args...]")
+		}
+		return runtime.Supervise(args[1], args[3], args[4:])
 	case "version", "-version", "--version":
 		ui.Banner()
 		ui.Detail("version " + Version)

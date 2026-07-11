@@ -232,7 +232,15 @@ func serverPIDs(root string) []int {
 
 func cleanupServerFiles(root string) {
 	_ = os.Remove(state.PIDPath(root))
+	stopSupervisor(root)
 	stopHold(root)
+}
+
+func stopSupervisor(root string) {
+	if pid, ok := readAlivePID(state.SupervisorPIDPath(root)); ok && pid != os.Getpid() {
+		_ = terminateSupervisor(pid)
+	}
+	_ = os.Remove(state.SupervisorPIDPath(root))
 }
 
 func stopHold(root string) {

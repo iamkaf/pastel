@@ -19,6 +19,12 @@ import (
 
 func supportsAttachedConsole() bool { return true }
 
+func terminateSupervisor(pid int) error {
+	// The supervisor starts a new session and Java inherits its process group.
+	// Signal the group so an aborted startup cannot leave Java orphaned.
+	return syscall.Kill(-pid, syscall.SIGTERM)
+}
+
 func startBackground(opt Options, java string, args []string) error {
 	fifo := state.ConsoleInPath(opt.Root)
 	logPath := state.ConsoleLogPath(opt.Root)
@@ -40,49 +46,34 @@ func startBackground(opt Options, java string, args []string) error {
 	_ = hold.Process.Release()
 
 	time.Sleep(100 * time.Millisecond)
-	stdin, err := os.OpenFile(fifo, os.O_RDONLY, 0)
-	if err != nil {
-		stopHold(opt.Root)
-		return fmt.Errorf("open console fifo for server: %w", err)
-	}
 	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o644)
 	if err != nil {
-		stdin.Close()
+		stopHold(opt.Root)
+		return err
+	}
+	logFile.Close()
+
+	supervisorArgs := []string{"__supervise", opt.Root, "--", java}
+	supervisorArgs = append(supervisorArgs, args...)
+	cmd := exec.Command(self, supervisorArgs...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := cmd.Start(); err != nil {
+		stopHold(opt.Root)
+		return fmt.Errorf("couldn't start server supervisor: %w", err)
+	}
+	if err := os.WriteFile(state.SupervisorPIDPath(opt.Root), []byte(strconv.Itoa(cmd.Process.Pid)+"\n"), 0o644); err != nil {
+		_ = cmd.Process.Kill()
 		stopHold(opt.Root)
 		return err
 	}
 
-	cmd := exec.Command(java, args...)
-	cmd.Dir = opt.Root
-	cmd.Stdin = stdin
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	if err := cmd.Start(); err != nil {
-		stdin.Close()
-		logFile.Close()
-		stopHold(opt.Root)
-		return fmt.Errorf("couldn't start Java (%s): %w", java, err)
-	}
-	serverPID := cmd.Process.Pid
-	stdin.Close()
-	logFile.Close()
-	if serverPID <= 0 {
-		time.Sleep(200 * time.Millisecond)
-		if found := findServerProcesses(opt.Root); len(found) > 0 {
-			serverPID = found[0]
-		}
-	}
-	if serverPID > 0 {
-		if err := os.WriteFile(state.PIDPath(opt.Root), []byte(strconv.Itoa(serverPID)+"\n"), 0o644); err != nil {
-			_ = cmd.Process.Kill()
-			stopHold(opt.Root)
-			return err
-		}
-	}
-
 	exited := make(chan error, 1)
 	go func() { exited <- cmd.Wait() }()
+	serverPID, err := waitForServerPID(opt.Root, exited, 10*time.Second)
+	if err != nil {
+		cleanupServerFiles(opt.Root)
+		return err
+	}
 	latestLog := filepath.Join(opt.Root, "logs", "latest.log")
 	if err := waitForBoot(opt.Root, serverPID, logPath, latestLog, exited); err != nil {
 		cleanupServerFiles(opt.Root)
@@ -97,6 +88,82 @@ func startBackground(opt Options, java string, args []string) error {
 	ui.Blank()
 	ui.Detail("You can close this terminal — the server keeps going.")
 	return nil
+}
+
+func waitForServerPID(root string, exited <-chan error, timeout time.Duration) (int, error) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		select {
+		case err := <-exited:
+			if err != nil {
+				return 0, fmt.Errorf("server supervisor exited: %w", err)
+			}
+			return 0, fmt.Errorf("server supervisor exited before Java started")
+		default:
+		}
+		if pid, ok := readAlivePID(state.PIDPath(root)); ok {
+			return pid, nil
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return 0, fmt.Errorf("timed out waiting for Java to start")
+}
+
+// Supervise owns the background Java process. A server that has reached the
+// Minecraft ready message is restarted after a non-zero exit; clean shutdowns
+// and startup failures remain stopped.
+func Supervise(root, java string, args []string) error {
+	logPath := state.ConsoleLogPath(root)
+	latestLog := filepath.Join(root, "logs", "latest.log")
+	for {
+		startConsole := logSize(logPath)
+		startLatest := logSize(latestLog)
+		stdin, err := os.OpenFile(state.ConsoleInPath(root), os.O_RDONLY, 0)
+		if err != nil {
+			return fmt.Errorf("open console fifo for server: %w", err)
+		}
+		logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+		if err != nil {
+			stdin.Close()
+			return err
+		}
+		cmd := exec.Command(java, args...)
+		cmd.Dir = root
+		cmd.Stdin = stdin
+		cmd.Stdout = logFile
+		cmd.Stderr = logFile
+		if err := cmd.Start(); err != nil {
+			stdin.Close()
+			logFile.Close()
+			return fmt.Errorf("couldn't start Java (%s): %w", java, err)
+		}
+		if err := os.WriteFile(state.PIDPath(root), []byte(strconv.Itoa(cmd.Process.Pid)+"\n"), 0o644); err != nil {
+			_ = cmd.Process.Kill()
+			stdin.Close()
+			logFile.Close()
+			return err
+		}
+		err = cmd.Wait()
+		stdin.Close()
+		_ = os.Remove(state.PIDPath(root))
+		ready := logContainsDoneSince(logPath, startConsole) || logContainsDoneSince(latestLog, startLatest)
+		if !shouldRestartServer(err, ready) {
+			logFile.Close()
+			cleanupServerFiles(root)
+			return err
+		}
+		fmt.Fprintln(logFile, "[Pastel] Server crashed; restarting in 5 seconds…")
+		logFile.Close()
+		time.Sleep(5 * time.Second)
+	}
+}
+
+func shouldRestartServer(waitErr error, reachedReady bool) bool {
+	if !reachedReady || waitErr == nil {
+		return false
+	}
+	exit, ok := waitErr.(*exec.ExitError)
+	return ok && exit.ExitCode() != 0
 }
 
 func HoldFIFO(path string) error {

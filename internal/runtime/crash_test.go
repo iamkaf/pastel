@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -28,5 +29,22 @@ Caused by: java.lang.NoClassDefFoundError: net/fabricmc/fabric/api/client/render
 	}
 	if !found {
 		t.Fatalf("mods: %v", s.Mods)
+	}
+}
+
+func TestShouldRestartServer(t *testing.T) {
+	crashed := exec.Command("sh", "-c", "exit 7")
+	if err := crashed.Run(); err == nil {
+		t.Fatal("expected crash command to fail")
+	} else {
+		if !shouldRestartServer(err, true) {
+			t.Fatal("ready server should restart after non-zero exit")
+		}
+		if shouldRestartServer(err, false) {
+			t.Fatal("startup failure must not restart")
+		}
+	}
+	if shouldRestartServer(nil, true) {
+		t.Fatal("clean shutdown must not restart")
 	}
 }
