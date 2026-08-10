@@ -25,3 +25,6 @@ func processAlive(pid int) bool {
 	}
 	return proc.Signal(syscall.Signal(0)) == nil
 }
+
+// findServerProcessesWindows is only used on Windows; stub keeps shared callers compiling.
+func findServerProcessesWindows(string) []ProcInfo { return nil }
