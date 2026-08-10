@@ -41,6 +41,8 @@ func findServerProcessInfos(root string) []ProcInfo {
 	switch runtime.GOOS {
 	case "linux":
 		return findServerProcessesLinux(abs)
+	case "windows":
+		return findServerProcessesWindows(abs)
 	default:
 		return findServerProcessesPS(abs)
 	}
@@ -153,7 +155,7 @@ func isMinecraftServerProcess(cmd, absRoot, cwd string) bool {
 	if !looksLikeMinecraftServerCmd(cmd) {
 		return false
 	}
-	if absRoot != "" && strings.Contains(cmd, absRoot) {
+	if absRoot != "" && commandContainsPath(cmd, absRoot) {
 		return true
 	}
 	if absRoot != "" && cwdMatchesRoot(cwd, absRoot) {
@@ -162,11 +164,34 @@ func isMinecraftServerProcess(cmd, absRoot, cwd string) bool {
 	return false
 }
 
-func looksLikeMinecraftServerCmd(cmd string) bool {
-	if !strings.Contains(cmd, "java") {
+func commandContainsPath(cmd, absRoot string) bool {
+	if absRoot == "" {
 		return false
 	}
-	if strings.Contains(cmd, "__hold-fifo") {
+	if strings.Contains(cmd, absRoot) {
+		return true
+	}
+	slash := filepath.ToSlash(absRoot)
+	if slash != absRoot && strings.Contains(cmd, slash) {
+		return true
+	}
+	if runtime.GOOS == "windows" {
+		lowCmd := strings.ToLower(cmd)
+		if strings.Contains(lowCmd, strings.ToLower(absRoot)) {
+			return true
+		}
+		if strings.Contains(lowCmd, strings.ToLower(slash)) {
+			return true
+		}
+	}
+	return false
+}
+
+func looksLikeMinecraftServerCmd(cmd string) bool {
+	if !strings.Contains(strings.ToLower(cmd), "java") {
+		return false
+	}
+	if strings.Contains(cmd, "__hold-fifo") || strings.Contains(cmd, "__supervise") {
 		return false
 	}
 	// Exclude common non-server Java (IDEs, Gradle, etc.)
@@ -199,29 +224,18 @@ func cwdMatchesRoot(cwd, absRoot string) bool {
 	cleaned := strings.TrimSpace(cwd)
 	cleaned = strings.TrimSuffix(cleaned, " (deleted)")
 	cleaned = filepath.Clean(cleaned)
-	return cleaned == filepath.Clean(absRoot)
-}
-
-func signalPID(pid int, sig syscall.Signal) error {
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return err
+	root := filepath.Clean(absRoot)
+	if cleaned == root {
+		return true
 	}
-	return proc.Signal(sig)
-}
-
-func processAlive(pid int) bool {
-	if pid <= 0 {
-		return false
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(cleaned, root)
 	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	return proc.Signal(syscall.Signal(0)) == nil
+	return false
 }
 
 // KillPID sends SIGTERM then SIGKILL to a single process (and is used by stop -pid).
+// On Windows both signals map to TerminateProcess.
 func KillPID(pid int) error {
 	if pid <= 1 {
 		return fmt.Errorf("invalid pid %d", pid)

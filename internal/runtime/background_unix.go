@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/iamkaf/pastel/internal/state"
-	"github.com/iamkaf/pastel/internal/ui"
 )
 
 func supportsAttachedConsole() bool { return true }
@@ -80,33 +79,8 @@ func startBackground(opt Options, java string, args []string) error {
 		return err
 	}
 
-	ui.BigOK("Your server is running in the background")
-	ui.Title("What you can do now")
-	fmt.Fprintf(ui.Out, "  %s  %s\n", ui.Blue(padRunCmd("./pastel console")), "See the live log and type commands")
-	fmt.Fprintf(ui.Out, "  %s  %s\n", ui.Blue(padRunCmd("./pastel stop")), "Shut the server down when you're done")
-	fmt.Fprintf(ui.Out, "  %s  %s\n", ui.Blue(padRunCmd("./pastel")), "Check status anytime")
-	ui.Blank()
-	ui.Detail("You can close this terminal — the server keeps going.")
+	printBackgroundReady()
 	return nil
-}
-
-func waitForServerPID(root string, exited <-chan error, timeout time.Duration) (int, error) {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		select {
-		case err := <-exited:
-			if err != nil {
-				return 0, fmt.Errorf("server supervisor exited: %w", err)
-			}
-			return 0, fmt.Errorf("server supervisor exited before Java started")
-		default:
-		}
-		if pid, ok := readAlivePID(state.PIDPath(root)); ok {
-			return pid, nil
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	return 0, fmt.Errorf("timed out waiting for Java to start")
 }
 
 // Supervise owns the background Java process. A server that has reached the
@@ -156,14 +130,6 @@ func Supervise(root, java string, args []string, autoRestart bool) error {
 		logFile.Close()
 		time.Sleep(5 * time.Second)
 	}
-}
-
-func shouldRestartServer(waitErr error, reachedReady, autoRestart bool) bool {
-	if !autoRestart || !reachedReady || waitErr == nil {
-		return false
-	}
-	exit, ok := waitErr.(*exec.ExitError)
-	return ok && exit.ExitCode() != 0
 }
 
 func HoldFIFO(path string) error {

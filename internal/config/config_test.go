@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -122,12 +123,14 @@ func TestLoadAddsMissingAutoRestart(t *testing.T) {
 	if strings.Count(string(data), "auto_restart = true") != 1 {
 		t.Fatalf("option must not be appended twice, got:\n%s", data)
 	}
-	info, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if info.Mode().Perm() != 0o640 {
-		t.Fatalf("mode changed to %o", info.Mode().Perm())
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm() != 0o640 {
+			t.Fatalf("mode changed to %o", info.Mode().Perm())
+		}
 	}
 }
 
