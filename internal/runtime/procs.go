@@ -41,6 +41,8 @@ func findServerProcessInfos(root string) []ProcInfo {
 	switch runtime.GOOS {
 	case "linux":
 		return findServerProcessesLinux(abs)
+	case "windows":
+		return findServerProcessesWindows(abs)
 	default:
 		return findServerProcessesPS(abs)
 	}
@@ -153,7 +155,7 @@ func isMinecraftServerProcess(cmd, absRoot, cwd string) bool {
 	if !looksLikeMinecraftServerCmd(cmd) {
 		return false
 	}
-	if absRoot != "" && strings.Contains(cmd, absRoot) {
+	if absRoot != "" && commandContainsPath(cmd, absRoot) {
 		return true
 	}
 	if absRoot != "" && cwdMatchesRoot(cwd, absRoot) {
@@ -163,29 +165,29 @@ func isMinecraftServerProcess(cmd, absRoot, cwd string) bool {
 }
 
 func looksLikeMinecraftServerCmd(cmd string) bool {
-	if !strings.Contains(cmd, "java") {
+	low := strings.ToLower(cmd)
+	if !strings.Contains(low, "java") {
 		return false
 	}
-	if strings.Contains(cmd, "__hold-fifo") {
+	if strings.Contains(low, "__hold-fifo") || strings.Contains(low, "__supervise") {
 		return false
 	}
 	// Exclude common non-server Java (IDEs, Gradle, etc.)
-	low := strings.ToLower(cmd)
 	if strings.Contains(low, "gradle") || strings.Contains(low, "jdt.ls") ||
 		strings.Contains(low, "language server") || strings.Contains(low, "intellij") {
 		return false
 	}
 	// Dedicated server shapes
-	if strings.Contains(cmd, "fabric-server-") || strings.Contains(cmd, "quilt-server-") {
+	if strings.Contains(low, "fabric-server-") || strings.Contains(low, "quilt-server-") {
 		return true
 	}
-	if strings.Contains(cmd, "unix_args.txt") || strings.Contains(cmd, "win_args.txt") {
+	if strings.Contains(low, "unix_args.txt") || strings.Contains(low, "win_args.txt") {
 		return true
 	}
-	if strings.Contains(cmd, "-jar") && (strings.Contains(cmd, "nogui") || strings.Contains(cmd, "server.jar")) {
+	if strings.Contains(low, "-jar") && (strings.Contains(low, "nogui") || strings.Contains(low, "server.jar")) {
 		return true
 	}
-	if strings.Contains(cmd, "neoforge") && strings.Contains(cmd, "@") {
+	if strings.Contains(low, "neoforge") && strings.Contains(low, "@") {
 		return true
 	}
 	return false
@@ -199,29 +201,18 @@ func cwdMatchesRoot(cwd, absRoot string) bool {
 	cleaned := strings.TrimSpace(cwd)
 	cleaned = strings.TrimSuffix(cleaned, " (deleted)")
 	cleaned = filepath.Clean(cleaned)
-	return cleaned == filepath.Clean(absRoot)
-}
-
-func signalPID(pid int, sig syscall.Signal) error {
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return err
+	root := filepath.Clean(absRoot)
+	if cleaned == root {
+		return true
 	}
-	return proc.Signal(sig)
-}
-
-func processAlive(pid int) bool {
-	if pid <= 0 {
-		return false
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(cleaned, root)
 	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	return proc.Signal(syscall.Signal(0)) == nil
+	return false
 }
 
 // KillPID sends SIGTERM then SIGKILL to a single process (and is used by stop -pid).
+// On Windows both signals map to TerminateProcess.
 func KillPID(pid int) error {
 	if pid <= 1 {
 		return fmt.Errorf("invalid pid %d", pid)

@@ -9,8 +9,12 @@ permissions:
 
 jobs:
   check:
-    name: Test and build
-    runs-on: ubuntu-latest
+    name: Test and build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
 
     steps:
       - name: Checkout
@@ -23,6 +27,7 @@ jobs:
           cache: true
 
       - name: Verify formatting
+        if: runner.os == 'Linux'
         run: test -z "$(gofmt -l .)"
 
       - name: Verify modules
@@ -32,9 +37,15 @@ jobs:
         run: go vet ./...
 
       - name: Test
+        if: runner.os == 'Linux'
         run: go test -race ./...
 
+      - name: Test
+        if: runner.os == 'Windows'
+        run: go test ./...
+
       - name: Build release targets
+        if: runner.os == 'Linux'
         shell: bash
         run: |
           set -euo pipefail

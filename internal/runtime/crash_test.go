@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"os/exec"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -33,7 +34,12 @@ Caused by: java.lang.NoClassDefFoundError: net/fabricmc/fabric/api/client/render
 }
 
 func TestShouldRestartServer(t *testing.T) {
-	crashed := exec.Command("sh", "-c", "exit 7")
+	var crashed *exec.Cmd
+	if runtime.GOOS == "windows" {
+		crashed = exec.Command("cmd", "/c", "exit 7")
+	} else {
+		crashed = exec.Command("sh", "-c", "exit 7")
+	}
 	if err := crashed.Run(); err == nil {
 		t.Fatal("expected crash command to fail")
 	} else {

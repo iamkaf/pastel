@@ -108,7 +108,9 @@ func Attach(root string) error {
 		ui.Blank()
 		ui.Warn("The server is no longer running — left the console.")
 		ui.Detail("If it crashed, see " + ui.Blue("logs/latest.log"))
-		cleanupServerFiles(root)
+		// The supervisor may be between crashed Java processes. Let it own
+		// restart and cleanup instead of cancelling auto-restart from Attach.
+		cleanupAfterAttachDeath(root)
 	}
 
 	for {
@@ -147,6 +149,12 @@ func Attach(root string) error {
 				}
 			}
 		}
+	}
+}
+
+func cleanupAfterAttachDeath(root string) {
+	if _, supervisorAlive := readAlivePID(state.SupervisorPIDPath(root)); !supervisorAlive {
+		cleanupServerFiles(root)
 	}
 }
 

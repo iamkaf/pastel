@@ -32,9 +32,9 @@ Pastel turns a Modrinth modpack into a managed dedicated server. It downloads an
 | --- | --- | --- | --- |
 | macOS | Yes | Yes | Yes |
 | Linux | Yes | Yes | Yes |
-| Windows | Yes | Foreground with `pastel run -f` | Planned |
+| Windows | Yes | Yes | Yes |
 
-Windows release binaries are provided so pack installation and foreground servers can be used and tested today. The default background mode and `pastel console` currently require the Unix FIFO implementation on macOS or Linux.
+Windows uses an owner-restricted named pipe for console commands instead of a Unix FIFO. Background `pastel run`, `pastel console`, crash restarts, and `pastel stop` work the same way as on macOS and Linux. Foreground mode remains available with `pastel run -f`.
 
 ### Install Pastel
 
@@ -90,7 +90,7 @@ By running a Minecraft server with Pastel, you indicate your agreement to [Mojan
 | `pastel update` | Choose and install another Modrinth or Maven pack version |
 | `pastel self-update` | Download, verify, and install the latest Pastel release |
 | `pastel run` | Refresh when enabled, then start in the background with crash restarts |
-| `pastel run -f` | Run in the foreground; required on Windows today |
+| `pastel run -f` | Run in the foreground attached to this terminal |
 | `pastel console` | Follow the live log and send server commands |
 | `pastel stop` | Ask Minecraft to save and stop, then escalate if necessary |
 | `pastel status` | Show detailed state for this server folder |
