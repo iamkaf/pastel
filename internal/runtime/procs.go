@@ -164,53 +164,30 @@ func isMinecraftServerProcess(cmd, absRoot, cwd string) bool {
 	return false
 }
 
-func commandContainsPath(cmd, absRoot string) bool {
-	if absRoot == "" {
-		return false
-	}
-	if strings.Contains(cmd, absRoot) {
-		return true
-	}
-	slash := filepath.ToSlash(absRoot)
-	if slash != absRoot && strings.Contains(cmd, slash) {
-		return true
-	}
-	if runtime.GOOS == "windows" {
-		lowCmd := strings.ToLower(cmd)
-		if strings.Contains(lowCmd, strings.ToLower(absRoot)) {
-			return true
-		}
-		if strings.Contains(lowCmd, strings.ToLower(slash)) {
-			return true
-		}
-	}
-	return false
-}
-
 func looksLikeMinecraftServerCmd(cmd string) bool {
-	if !strings.Contains(strings.ToLower(cmd), "java") {
+	low := strings.ToLower(cmd)
+	if !strings.Contains(low, "java") {
 		return false
 	}
-	if strings.Contains(cmd, "__hold-fifo") || strings.Contains(cmd, "__supervise") {
+	if strings.Contains(low, "__hold-fifo") || strings.Contains(low, "__supervise") {
 		return false
 	}
 	// Exclude common non-server Java (IDEs, Gradle, etc.)
-	low := strings.ToLower(cmd)
 	if strings.Contains(low, "gradle") || strings.Contains(low, "jdt.ls") ||
 		strings.Contains(low, "language server") || strings.Contains(low, "intellij") {
 		return false
 	}
 	// Dedicated server shapes
-	if strings.Contains(cmd, "fabric-server-") || strings.Contains(cmd, "quilt-server-") {
+	if strings.Contains(low, "fabric-server-") || strings.Contains(low, "quilt-server-") {
 		return true
 	}
-	if strings.Contains(cmd, "unix_args.txt") || strings.Contains(cmd, "win_args.txt") {
+	if strings.Contains(low, "unix_args.txt") || strings.Contains(low, "win_args.txt") {
 		return true
 	}
-	if strings.Contains(cmd, "-jar") && (strings.Contains(cmd, "nogui") || strings.Contains(cmd, "server.jar")) {
+	if strings.Contains(low, "-jar") && (strings.Contains(low, "nogui") || strings.Contains(low, "server.jar")) {
 		return true
 	}
-	if strings.Contains(cmd, "neoforge") && strings.Contains(cmd, "@") {
+	if strings.Contains(low, "neoforge") && strings.Contains(low, "@") {
 		return true
 	}
 	return false

@@ -4,17 +4,23 @@ package runtime
 
 import (
 	"bufio"
+	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	goruntime "runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
+	"unsafe"
 
+	"github.com/Microsoft/go-winio"
 	"github.com/iamkaf/pastel/internal/state"
 	"golang.org/x/sys/windows"
 )
@@ -23,6 +29,50 @@ func supportsAttachedConsole() bool { return true }
 
 func terminateSupervisor(pid int) error {
 	return KillPID(pid)
+}
+
+// Supervise owns the background Java process on Windows. It joins a
+// kill-on-close job before publishing its PID, so Java and any descendants die
+// if the supervisor is terminated unexpectedly.
+func Supervise(root, java string, args []string, autoRestart bool) error {
+	job, err := createSupervisorJob()
+	if err != nil {
+		return fmt.Errorf("supervisor job: %w", err)
+	}
+	if err := windows.AssignProcessToJobObject(job, windows.CurrentProcess()); err != nil {
+		_ = windows.CloseHandle(job)
+		return fmt.Errorf("join supervisor job: %w", err)
+	}
+	// The job handle intentionally remains open for the supervisor's lifetime.
+	// Closing the last handle would terminate this process as a job member.
+	if err := os.WriteFile(state.SupervisorPIDPath(root), []byte(strconv.Itoa(os.Getpid())+"\n"), 0o644); err != nil {
+		return err
+	}
+
+	err = superviseWindows(root, java, args, autoRestart)
+	// Keep the raw handle visibly live until supervision ends. The operating
+	// system closes it when this dedicated supervisor process exits.
+	goruntime.KeepAlive(job)
+	return err
+}
+
+func createSupervisorJob() (windows.Handle, error) {
+	job, err := windows.CreateJobObject(nil, nil)
+	if err != nil {
+		return 0, err
+	}
+	info := windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION{}
+	info.BasicLimitInformation.LimitFlags = windows.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+	if _, err := windows.SetInformationJobObject(
+		job,
+		windows.JobObjectExtendedLimitInformation,
+		uintptr(unsafe.Pointer(&info)),
+		uint32(unsafe.Sizeof(info)),
+	); err != nil {
+		_ = windows.CloseHandle(job)
+		return 0, err
+	}
+	return job, nil
 }
 
 func startBackground(opt Options, java string, args []string) error {
@@ -47,10 +97,6 @@ func startBackground(opt Options, java string, args []string) error {
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("couldn't start server supervisor: %w", err)
 	}
-	if err := os.WriteFile(state.SupervisorPIDPath(opt.Root), []byte(strconv.Itoa(cmd.Process.Pid)+"\n"), 0o644); err != nil {
-		_ = cmd.Process.Kill()
-		return err
-	}
 
 	exited := make(chan error, 1)
 	go func() { exited <- cmd.Wait() }()
@@ -70,18 +116,17 @@ func startBackground(opt Options, java string, args []string) error {
 	return nil
 }
 
-// Supervise owns the background Java process on Windows. Console commands arrive
-// over a loopback TCP listener whose address is stored in console.in (FIFOs are
-// not available). An anonymous pipe feeds Java stdin so disconnecting pastel
-// console does not EOF the server.
-func Supervise(root, java string, args []string, autoRestart bool) error {
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+// superviseWindows runs inside the dedicated supervisor process. Console
+// commands arrive through an owner-restricted named pipe whose address is
+// stored in console.in. An anonymous pipe feeds Java stdin so disconnecting
+// pastel console does not EOF the server.
+func superviseWindows(root, java string, args []string, autoRestart bool) error {
+	ln, pipeName, err := listenConsolePipe()
 	if err != nil {
 		return fmt.Errorf("console listener: %w", err)
 	}
 	defer ln.Close()
-	addr := ln.Addr().String()
-	if err := os.WriteFile(state.ConsoleInPath(root), []byte("tcp:"+addr+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(state.ConsoleInPath(root), []byte("pipe:"+pipeName+"\n"), 0o644); err != nil {
 		return err
 	}
 	defer os.Remove(state.ConsoleInPath(root))
@@ -145,6 +190,41 @@ func Supervise(root, java string, args []string, autoRestart bool) error {
 	}
 }
 
+func listenConsolePipe() (net.Listener, string, error) {
+	random := make([]byte, 16)
+	if _, err := rand.Read(random); err != nil {
+		return nil, "", err
+	}
+	pipeName := `\\.\pipe\pastel-console-` + hex.EncodeToString(random)
+	sddl, err := consolePipeSecurityDescriptor()
+	if err != nil {
+		return nil, "", err
+	}
+	ln, err := winio.ListenPipe(pipeName, &winio.PipeConfig{
+		SecurityDescriptor: sddl,
+		InputBufferSize:    64 * 1024,
+		OutputBufferSize:   64 * 1024,
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	return ln, pipeName, nil
+}
+
+func consolePipeSecurityDescriptor() (string, error) {
+	user, err := windows.GetCurrentProcessToken().GetTokenUser()
+	if err != nil {
+		return "", err
+	}
+	sid := user.User.Sid.String()
+	if sid == "" {
+		return "", fmt.Errorf("current user has no security identifier")
+	}
+	// Protected DACL: deny network logons, then allow only SYSTEM,
+	// administrators, and the Windows account that launched Pastel.
+	return fmt.Sprintf("D:P(D;;GA;;;NU)(A;;GA;;;SY)(A;;GA;;;BA)(A;;GA;;;%s)", sid), nil
+}
+
 type consoleFeeder struct {
 	mu sync.Mutex
 	w  *os.File
@@ -205,12 +285,14 @@ func SendCommand(root, line string) error {
 	if err != nil {
 		return fmt.Errorf("console not available (is the server running via ./pastel run?)")
 	}
-	addr := strings.TrimSpace(string(data))
-	if !strings.HasPrefix(addr, "tcp:") {
+	pipeName := strings.TrimSpace(string(data))
+	if !strings.HasPrefix(pipeName, "pipe:") {
 		return fmt.Errorf("console not available (is the server running via ./pastel run?)")
 	}
-	addr = strings.TrimPrefix(addr, "tcp:")
-	conn, err := net.DialTimeout("tcp", addr, 500*time.Millisecond)
+	pipeName = strings.TrimPrefix(pipeName, "pipe:")
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	conn, err := winio.DialPipeContext(ctx, pipeName)
 	if err != nil {
 		return fmt.Errorf("open console: %w", err)
 	}

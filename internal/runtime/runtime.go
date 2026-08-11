@@ -122,6 +122,7 @@ func StopWith(root string, opt StopOptions) error {
 
 	if len(pids) == 0 {
 		_ = os.Remove(state.PIDPath(root))
+		stopSupervisor(root)
 		stopHold(root)
 		// Help after "I deleted the folder while the server was running"
 		orphans := FindOrphanMinecraftServers()

@@ -34,7 +34,7 @@ Pastel turns a Modrinth modpack into a managed dedicated server. It downloads an
 | Linux | Yes | Yes | Yes |
 | Windows | Yes | Yes | Yes |
 
-Windows uses a loopback TCP console transport instead of a Unix FIFO. Background `pastel run`, `pastel console`, crash restarts, and `pastel stop` work the same way as on macOS and Linux. Foreground mode remains available with `pastel run -f`.
+Windows uses an owner-restricted named pipe for console commands instead of a Unix FIFO. Background `pastel run`, `pastel console`, crash restarts, and `pastel stop` work the same way as on macOS and Linux. Foreground mode remains available with `pastel run -f`.
 
 ### Install Pastel
 

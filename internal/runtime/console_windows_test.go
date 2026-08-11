@@ -3,7 +3,6 @@
 package runtime
 
 import (
-	"net"
 	"os"
 	"testing"
 	"time"
@@ -23,13 +22,12 @@ func TestWindowsConsoleSendCommand(t *testing.T) {
 	}
 	defer stdinR.Close()
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	ln, pipeName, err := listenConsolePipe()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer ln.Close()
-	addr := ln.Addr().String()
-	if err := os.WriteFile(state.ConsoleInPath(root), []byte("tcp:"+addr+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(state.ConsoleInPath(root), []byte("pipe:"+pipeName+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

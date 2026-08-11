@@ -49,8 +49,8 @@ func SupervisorPIDPath(serverRoot string) string {
 }
 
 // ConsoleInPath is the console command transport for a background server.
-// On macOS/Linux this is a FIFO; on Windows it is a small file that stores a
-// loopback TCP address (tcp:127.0.0.1:port).
+// On macOS/Linux this is a FIFO; on Windows it is a small file that stores the
+// address of an owner-restricted named pipe.
 func ConsoleInPath(serverRoot string) string {
 	return filepath.Join(Dir(serverRoot), "console.in")
 }
