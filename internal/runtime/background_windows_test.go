@@ -27,7 +27,7 @@ func TestWindowsSupervisorProcess(t *testing.T) {
 	case "wait":
 		ps = `Write-Output '[00:00:00] [Server thread/INFO]: Done (0.1s)! For help, type "help"'; $r = New-Object System.IO.StreamReader([Console]::OpenStandardInput()); while (($line = $r.ReadLine()) -ne $null) { if ($line -eq 'stop') { break } }`
 	case "crash":
-		ps = `$marker = Join-Path $env:PASTEL_TEST_SUPERVISOR_ROOT 'restart-count'; $count = 0; if (Test-Path $marker) { $count = [int](Get-Content -Raw $marker) }; $count++; Set-Content -NoNewline $marker $count; Write-Output '[00:00:00] [Server thread/INFO]: Done (0.1s)! For help, type "help"'; if ($count -eq 1) { exit 7 }; $r = New-Object System.IO.StreamReader([Console]::OpenStandardInput()); while (($line = $r.ReadLine()) -ne $null) { if ($line -eq 'stop') { break } }`
+		ps = `Write-Output '[00:00:00] [Server thread/INFO]: Done (0.1s)! For help, type "help"'; exit 7`
 	default:
 		t.Fatalf("unknown supervisor test mode %q", mode)
 	}
@@ -144,12 +144,9 @@ func TestWindowsStopDuringRestartDelayStopsSupervisor(t *testing.T) {
 	if _, alive := readAlivePID(state.PIDPath(root)); alive {
 		t.Fatal("server restarted after stop returned")
 	}
-	data, err := os.ReadFile(filepath.Join(root, "restart-count"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.TrimSpace(string(data)) != "1" {
-		t.Fatalf("server launched %s times; want exactly once", strings.TrimSpace(string(data)))
+	log := readLogTail(state.ConsoleLogPath(root), 16*1024)
+	if launches := strings.Count(log, "Done (0.1s)!"); launches != 1 {
+		t.Fatalf("server launched %d times after stop; want exactly once", launches)
 	}
 }
 
