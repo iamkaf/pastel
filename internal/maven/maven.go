@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/iamkaf/pastel/internal/buildinfo"
 )
 
 // NormalizeRepositories trims bases, drops empties, and de-duplicates (order preserved).
@@ -103,7 +105,7 @@ func NewClient(bases ...string) *Client {
 	return &Client{
 		Bases:     NormalizeRepositories(bases),
 		HTTP:      &http.Client{Timeout: 120 * time.Second},
-		UserAgent: "Pastel/0.1 (+https://kaf.sh)",
+		UserAgent: buildinfo.UserAgent(),
 	}
 }
 

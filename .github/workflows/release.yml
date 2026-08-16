@@ -104,7 +104,7 @@ jobs:
 
             mkdir -p "dist/$name"
             CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
-              go build -trimpath -ldflags "-s -w -X main.version=$VERSION" \
+              go build -trimpath -ldflags "-s -w -X github.com/iamkaf/pastel/internal/buildinfo.Version=$VERSION" \
               -o "dist/$name/$binary" ./cmd/pastel
             cp LICENSE README.md "dist/$name/"
 

@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/iamkaf/pastel/internal/buildinfo"
 	"github.com/iamkaf/pastel/internal/pack"
 )
 
@@ -28,7 +29,7 @@ type Downloader struct {
 func New() *Downloader {
 	return &Downloader{
 		HTTP:      &http.Client{Timeout: 10 * time.Minute},
-		UserAgent: "Pastel/0.1 (+https://kaf.sh)",
+		UserAgent: buildinfo.UserAgent(),
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/iamkaf/pastel/internal/buildinfo"
 	"github.com/iamkaf/pastel/internal/jre"
 )
 
@@ -402,7 +403,7 @@ func latestFabricInstaller() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", "Pastel/0.1 (+https://kaf.sh)")
+	req.Header.Set("User-Agent", buildinfo.UserAgent())
 	client := &http.Client{Timeout: 60 * time.Second}
 	res, err := client.Do(req)
 	if err != nil {
@@ -445,7 +446,7 @@ func downloadFile(rawURL, dest string) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", "Pastel/0.1 (+https://kaf.sh)")
+	req.Header.Set("User-Agent", buildinfo.UserAgent())
 	client := &http.Client{
 		Timeout: 10 * time.Minute,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {

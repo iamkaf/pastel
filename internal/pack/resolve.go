@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/iamkaf/pastel/internal/buildinfo"
 	"github.com/iamkaf/pastel/internal/maven"
 	"github.com/iamkaf/pastel/internal/modrinth"
 )
@@ -315,7 +316,7 @@ func httpGet(rawURL string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Pastel/0.1 (+https://kaf.sh)")
+	req.Header.Set("User-Agent", buildinfo.UserAgent())
 	client := &http.Client{Timeout: 10 * time.Minute}
 	res, err := client.Do(req)
 	if err != nil {

@@ -10,11 +10,12 @@ import (
 	"path"
 	"strings"
 	"time"
+
+	"github.com/iamkaf/pastel/internal/buildinfo"
 )
 
 const (
-	APIBase   = "https://api.modrinth.com/v2"
-	UserAgent = "Pastel/0.1 (+https://kaf.sh)"
+	APIBase = "https://api.modrinth.com/v2"
 )
 
 // Project is a subset of Modrinth project metadata.
@@ -66,7 +67,7 @@ type Client struct {
 func New() *Client {
 	return &Client{
 		HTTP:      &http.Client{Timeout: 60 * time.Second},
-		UserAgent: UserAgent,
+		UserAgent: buildinfo.UserAgent(),
 		APIBase:   APIBase,
 	}
 }
@@ -334,7 +335,7 @@ func (c *Client) get(rawURL string) ([]byte, error) {
 	}
 	ua := c.UserAgent
 	if ua == "" {
-		ua = UserAgent
+		ua = buildinfo.UserAgent()
 	}
 	req.Header.Set("User-Agent", ua)
 	res, err := c.HTTP.Do(req)
