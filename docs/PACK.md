@@ -1,6 +1,6 @@
-# Authoring packs for Pastel
+# Packs for Pastel
 
-Pastel's maintained public pack format is the standard Modrinth `.mrpack` format. A pack that already describes its dedicated-server files correctly should work without Pastel-specific metadata.
+Pastel runs standard Modrinth `.mrpack` files. A pack that already describes its dedicated-server files correctly should work without Pastel-specific metadata. Build the archive with packwiz, Modrinth's tooling, or any spec-compliant zip pipeline.
 
 ## Archive structure
 
@@ -156,34 +156,6 @@ com/example/modpacks/example-pack/1.2.0/
 ```
 
 `maven-metadata.xml` at the artifact root is required for `latest` resolution and interactive `pastel update` version discovery. There is no JSON, jar, or `.pastel` fallback for Maven-distributed packs.
-
-## Kaf Maven authoring helpers
-
-The bundled authoring commands are intentionally tailored to Kaf's pack publishing flow. Other authors can build `.mrpack` files with Modrinth's tooling, packwiz, or any spec-compliant zip pipeline and distribute them through Modrinth or their own host.
-
-`pastel pack build` starts with an existing `modrinth.index.json`, updates its display name and version, and adds `config/` and `defaultconfigs/` from a prepared server as server overrides:
-
-```bash
-pastel pack build \
-  -server ./staging/example-server \
-  -mrpack ./staging/example-server/modrinth.index.json \
-  -name "Example Pack" \
-  -slug example-pack \
-  -version 1.2.0 \
-  -group com.iamkaf.modpacks \
-  -out dist/example-pack/1.2.0
-```
-
-The output includes the `.mrpack`, Maven POM, `maven-metadata.xml`, SHA-512 sidecars, and `publish.json`. Artifact identifiers are restricted to safe Maven filename components, and symlinked override inputs are rejected.
-
-Publishing is immutable and uses `MAVEN_PUBLISH_USERNAME` and `MAVEN_PUBLISH_PASSWORD`:
-
-```bash
-pastel pack publish -dir dist/example-pack/1.2.0 -dry-run
-pastel pack publish -dir dist/example-pack/1.2.0
-```
-
-The publisher only sends generated files from the build directory and requires HTTPS for the credentialed endpoint.
 
 ## Author checklist
 

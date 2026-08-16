@@ -3,27 +3,27 @@ package maven
 import "testing"
 
 func TestParseAndPath(t *testing.T) {
-	c, err := ParseCoordinate("com.iamkaf.modpacks:forever-world:1.0.1")
+	c, err := ParseCoordinate("com.example.modpacks:example-pack:1.0.1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "com/iamkaf/modpacks/forever-world/1.0.1/forever-world-1.0.1.json"
-	if got := c.Path("json"); got != want {
+	want := "com/example/modpacks/example-pack/1.0.1/example-pack-1.0.1.mrpack"
+	if got := c.Path("mrpack"); got != want {
 		t.Fatalf("path: got %s want %s", got, want)
 	}
-	u := c.URL("https://maven.kaf.sh", "json")
-	if u != "https://maven.kaf.sh/"+want {
+	u := c.URL("https://maven.example.com", "mrpack")
+	if u != "https://maven.example.com/"+want {
 		t.Fatalf("url %s", u)
 	}
 }
 
 func TestClassifier(t *testing.T) {
-	c, err := ParseCoordinate("com.iamkaf.pastel:pastel:1.0.0:darwin-arm64")
+	c, err := ParseCoordinate("com.example.tools:example:1.0.0:linux-amd64")
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := c.Path("bin")
-	want := "com/iamkaf/pastel/pastel/1.0.0/pastel-1.0.0-darwin-arm64.bin"
+	want := "com/example/tools/example/1.0.0/example-1.0.0-linux-amd64.bin"
 	if got != want {
 		t.Fatalf("got %s want %s", got, want)
 	}

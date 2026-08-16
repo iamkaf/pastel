@@ -15,7 +15,7 @@ const DefaultFileName = "server.pastel"
 // Config is the local instance file. It points at a pack and runtime knobs.
 type Config struct {
 	// Pack is a .mrpack path/URL, a Modrinth index path, a Maven coordinate
-	// (com.iamkaf.modpacks:slug:version → .mrpack only), or a file: URL.
+	// (group:artifact:version → .mrpack only), or a file: URL.
 	Pack string `toml:"pack"`
 
 	// Memory is the -Xmx value (e.g. "4G"). Empty uses launch default or 4G.

@@ -53,8 +53,6 @@ func Run(args []string) error {
 		return friendly(cmdUpdate(args[1:]))
 	case "self-update", "selfupdate":
 		return friendly(cmdSelfUpdate(args[1:]))
-	case "pack":
-		return cmdPack(args[1:])
 	case "__hold-fifo":
 		// Internal: keep console FIFO open for background server.
 		if len(args) < 2 {
@@ -263,7 +261,6 @@ func doSync(cf *commonFlags, cfg *config.Config, res *pack.Resolved) (*sync.Resu
 		Root:           cfg.Root(),
 		Manifest:       res.Manifest,
 		PackCoordinate: res.Coordinate,
-		Repositories:   cfg.MavenRepositories(),
 		PruneMods:      cf.prune,
 		DryRun:         cf.dryRun,
 		Report:         ui.NewSyncReport(cf.verbose),
@@ -289,15 +286,8 @@ func printSyncSummary(res *sync.Result, dry bool, name, version, nextStep string
 		} else {
 			lines = append(lines, fmt.Sprintf("%s file(s) downloaded or updated", ui.Bold(fmt.Sprint(res.Downloaded))))
 		}
-	} else if res.Bundles == 0 {
+	} else {
 		lines = append(lines, "Everything was already up to date")
-	}
-	if res.Bundles > 0 {
-		if dry {
-			lines = append(lines, fmt.Sprintf("%s config/bundle(s) would refresh", ui.Bold(fmt.Sprint(res.Bundles))))
-		} else {
-			lines = append(lines, fmt.Sprintf("%s config/bundle(s) applied", ui.Bold(fmt.Sprint(res.Bundles))))
-		}
 	}
 	if res.Overrides > 0 {
 		if dry {

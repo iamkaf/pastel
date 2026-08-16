@@ -1,28 +1,24 @@
 package pack
 
-import (
-	"testing"
-)
+import "testing"
 
-func TestParseAndValidate(t *testing.T) {
-	raw := []byte(`{
-  "schemaVersion": 1,
-  "name": "FOREVER WORLD",
-  "version": "1.0.1",
-  "dependencies": {"minecraft": "26.1.2", "fabric-loader": "0.19.2"},
-  "files": [{
-    "path": "mods/example.jar",
-    "hashes": {"sha512": "abc"},
-    "downloads": ["https://cdn.modrinth.com/data/x/versions/y/example.jar"]
-  }],
-  "launch": {"jar": "fabric-server-mc.26.1.2-loader.0.19.2-launcher.1.1.1.jar"}
-}`)
-	m, err := Parse(raw)
-	if err != nil {
-		t.Fatal(err)
+func TestValidate(t *testing.T) {
+	m := &Manifest{
+		Name:    "Example Pack",
+		Version: "1.0.1",
+		Dependencies: map[string]string{
+			"minecraft":     "26.1.2",
+			"fabric-loader": "0.19.2",
+		},
+		Files: []File{{
+			Path:      "mods/example.jar",
+			Hashes:    map[string]string{"sha512": "abc"},
+			Downloads: []string{"https://cdn.example.com/example.jar"},
+		}},
+		Launch: &Launch{Jar: "fabric-server-mc.26.1.2-loader.0.19.2-launcher.1.1.1.jar"},
 	}
-	if m.Name != "FOREVER WORLD" || len(m.Files) != 1 {
-		t.Fatalf("unexpected: %+v", m)
+	if err := m.Validate(); err != nil {
+		t.Fatal(err)
 	}
 	algo, hex, ok := m.Files[0].PreferredHash()
 	if !ok || algo != "sha512" || hex != "abc" {
@@ -30,20 +26,17 @@ func TestParseAndValidate(t *testing.T) {
 	}
 }
 
-func TestRejectWorldPath(t *testing.T) {
-	raw := []byte(`{
-  "schemaVersion": 1,
-  "name": "x",
-  "version": "1",
-  "files": [{
-    "path": "world/foo",
-    "hashes": {"sha256": "aa"},
-    "downloads": ["https://example.com/foo"]
-  }]
-}`)
-	// Validate allows world path at parse; sync rejects. Parse only checks ..
-	m, err := Parse(raw)
-	if err != nil {
+func TestValidateAllowsWorldPath(t *testing.T) {
+	m := &Manifest{
+		Name:    "x",
+		Version: "1",
+		Files: []File{{
+			Path:      "world/foo",
+			Hashes:    map[string]string{"sha256": "aa"},
+			Downloads: []string{"https://example.com/foo"},
+		}},
+	}
+	if err := m.Validate(); err != nil {
 		t.Fatal(err)
 	}
 	if m.Files[0].Path != "world/foo" {
@@ -51,18 +44,31 @@ func TestRejectWorldPath(t *testing.T) {
 	}
 }
 
-func TestRejectDotDot(t *testing.T) {
-	raw := []byte(`{
-  "schemaVersion": 1,
-  "name": "x",
-  "version": "1",
-  "files": [{
-    "path": "mods/../secret",
-    "hashes": {"sha256": "aa"},
-    "downloads": ["https://example.com/foo"]
-  }]
-}`)
-	if _, err := Parse(raw); err == nil {
+func TestValidateRejectsDotDot(t *testing.T) {
+	m := &Manifest{
+		Name:    "x",
+		Version: "1",
+		Files: []File{{
+			Path:      "mods/../secret",
+			Hashes:    map[string]string{"sha256": "aa"},
+			Downloads: []string{"https://example.com/foo"},
+		}},
+	}
+	if err := m.Validate(); err == nil {
 		t.Fatal("expected error for .. in path")
+	}
+}
+
+func TestValidateRequiresDownloads(t *testing.T) {
+	m := &Manifest{
+		Name:    "x",
+		Version: "1",
+		Files: []File{{
+			Path:   "mods/example.jar",
+			Hashes: map[string]string{"sha256": "aa"},
+		}},
+	}
+	if err := m.Validate(); err == nil {
+		t.Fatal("expected error for missing downloads")
 	}
 }

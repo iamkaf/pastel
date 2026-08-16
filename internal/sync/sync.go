@@ -37,11 +37,9 @@ type Options struct {
 	Root           string
 	Manifest       *pack.Manifest
 	PackCoordinate string
-	// Repositories is an ordered Maven base list for maven: file coordinates.
-	Repositories []string
-	PruneMods    bool
-	DryRun       bool
-	Report       Reporter
+	PruneMods      bool
+	DryRun         bool
+	Report         Reporter
 	// DownloadWorkers limits concurrent downloads (0 = default).
 	DownloadWorkers int
 	// Mrpack supplies overrides/ and server-overrides/ (optional).
@@ -54,7 +52,6 @@ type Options struct {
 type Result struct {
 	Downloaded int
 	Unchanged  int
-	Bundles    int
 	Overrides  int
 	Loader     bool // true if a loader jar was installed this run
 	Pruned     []string
@@ -87,7 +84,7 @@ func Run(opt Options) (*Result, error) {
 		workers = DefaultDownloadWorkers
 	}
 
-	dl := fetch.New(opt.Repositories...)
+	dl := fetch.New()
 	res := &Result{}
 	wantedMods := map[string]struct{}{}
 	wantedRootJars := map[string]struct{}{}
@@ -139,33 +136,6 @@ func Run(opt Options) (*Result, error) {
 	if !opt.DryRun && len(jobs) > 0 {
 		if err := downloadParallel(dl, jobs, workers, rep, res); err != nil {
 			return res, err
-		}
-	}
-
-	// Config (and other) bundles — sequential (small, extract-heavy)
-	for _, b := range opt.Manifest.Bundles {
-		label := "bundle:" + b.ID
-		if opt.DryRun {
-			res.Bundles++
-			if rep != nil {
-				rep.WouldUpdate(label)
-			}
-			continue
-		}
-		changed, err := dl.EnsureBundle(b, root)
-		if err != nil {
-			return res, err
-		}
-		if changed {
-			res.Bundles++
-			if rep != nil {
-				rep.Download(label)
-			}
-		} else {
-			res.Unchanged++
-			if rep != nil {
-				rep.Unchanged(label)
-			}
 		}
 	}
 
@@ -246,7 +216,7 @@ func Run(opt Options) (*Result, error) {
 			Loader:         opt.Manifest.LoaderKind(),
 			ModCount:       opt.Manifest.ModCount(),
 			AppliedAt:      time.Now().UTC(),
-			FileCount:      len(opt.Manifest.Files) + len(opt.Manifest.Bundles) + res.Overrides,
+			FileCount:      len(opt.Manifest.Files) + res.Overrides,
 			ServerJar:      res.ServerJar,
 		}
 		if err := state.Save(root, st); err != nil {

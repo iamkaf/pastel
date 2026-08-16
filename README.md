@@ -173,7 +173,7 @@ The short version:
 - put shared files in `overrides/` and dedicated-server replacements in `server-overrides/`;
 - do not put worlds in the pack.
 
-See [the pack author guide](./docs/PACK.md) for resolution rules, override order, loader behavior, Maven layout, and the bundled Kaf Maven authoring commands.
+See [the pack author guide](./docs/PACK.md) for resolution rules, override order, loader behavior, and Maven layout.
 
 ## Contributing
 
@@ -197,7 +197,6 @@ The source is grouped by responsibility:
 | `internal/sync` | Download, override, and prune reconciliation |
 | `internal/runtime` | Server supervision, console, crash reporting, and process recovery |
 | `internal/jre` | Java selection and verified managed Temurin installation |
-| `internal/author` | Kaf pack build and Maven publication helpers |
 
 Pull requests run the check workflow. Every non-automation change that lands on `main` is automatically tested, assigned the next patch version, committed to `VERSION`, tagged, cross-compiled, checksummed, and published as a GitHub release. Commit subjects should be clear and imperative.
 

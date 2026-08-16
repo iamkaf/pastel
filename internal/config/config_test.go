@@ -12,7 +12,7 @@ func TestLoad(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "server.pastel")
 	content := `
-pack = "com.iamkaf.modpacks:forever-world:1.1.0"
+pack = "com.example.modpacks:example-pack:1.1.0"
 memory = "4G"
 `
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
@@ -22,7 +22,7 @@ memory = "4G"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Pack != "com.iamkaf.modpacks:forever-world:1.1.0" {
+	if cfg.Pack != "com.example.modpacks:example-pack:1.1.0" {
 		t.Fatal(cfg.Pack)
 	}
 	if cfg.Xmx() != "4G" {
@@ -160,10 +160,10 @@ func TestRepositoriesList(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "server.pastel")
 	content := `
-pack = "com.iamkaf.modpacks:forever-world:1.1.0"
+pack = "com.example.modpacks:example-pack:1.1.0"
 repositories = [
   "https://maven.example.com/",
-  "https://maven.kaf.sh",
+  "https://repo.example.org",
   "https://maven.example.com",
 ]
 `
@@ -178,7 +178,7 @@ repositories = [
 	if len(repos) != 2 {
 		t.Fatalf("want 2 unique repos, got %v", repos)
 	}
-	if repos[0] != "https://maven.example.com" || repos[1] != "https://maven.kaf.sh" {
+	if repos[0] != "https://maven.example.com" || repos[1] != "https://repo.example.org" {
 		t.Fatalf("order/dedupe: %v", repos)
 	}
 }

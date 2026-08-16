@@ -15,23 +15,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/iamkaf/pastel/internal/maven"
 	"github.com/iamkaf/pastel/internal/pack"
 )
 
 // Downloader fetches remote bytes with hash verification.
 type Downloader struct {
 	HTTP      *http.Client
-	Maven     *maven.Client
 	UserAgent string
 }
 
 // New returns a Downloader with defaults.
-// mavenBases is an ordered repository list (empty → Kaf Maven).
-func New(mavenBases ...string) *Downloader {
+func New() *Downloader {
 	return &Downloader{
 		HTTP:      &http.Client{Timeout: 10 * time.Minute},
-		Maven:     maven.NewClient(mavenBases...),
 		UserAgent: "Pastel/0.1 (+https://kaf.sh)",
 	}
 }
@@ -54,21 +50,6 @@ func (d *Downloader) EnsureFile(f pack.File, dest string) (changed bool, err err
 	}
 
 	urls := append([]string{}, f.Downloads...)
-	if f.Maven != "" {
-		coord, err := maven.ParseCoordinate(f.Maven)
-		if err != nil {
-			return false, fmt.Errorf("%s: %w", f.Path, err)
-		}
-		ext := "jar"
-		if strings.HasSuffix(strings.ToLower(f.Path), ".json") {
-			ext = "json"
-		} else if i := strings.LastIndex(f.Path, "."); i >= 0 {
-			ext = f.Path[i+1:]
-		}
-		for _, base := range d.Maven.Bases {
-			urls = append(urls, coord.URL(base, ext))
-		}
-	}
 	if len(urls) == 0 {
 		return false, fmt.Errorf("%s: no download sources", f.Path)
 	}
