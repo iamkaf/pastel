@@ -3,14 +3,12 @@ package main
 import (
 	"os"
 
+	"github.com/iamkaf/pastel/internal/buildinfo"
 	"github.com/iamkaf/pastel/internal/cli"
 )
 
-// Set via -ldflags "-X main.version=1.0.0"
-var version = "0.1.0-dev"
-
 func main() {
-	cli.Version = version
+	cli.Version = buildinfo.Version
 	if err := cli.Run(os.Args[1:]); err != nil {
 		if !cli.IsSilent(err) {
 			// Fallback for errors that bypassed friendly formatting.

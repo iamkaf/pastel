@@ -77,9 +77,13 @@ func CheckUpdate(repositories []string, ref Ref, baselineVer string) (*CheckResu
 	if err != nil {
 		return nil, fmt.Errorf("fetch latest pack %s: %w", latest, err)
 	}
-	m, err := DecodeManifestBytes(data)
+	loaded, err := DecodeMrpackBytes(data)
 	if err != nil {
 		return nil, err
+	}
+	m := loaded.ToManifest(SideServer)
+	if m == nil {
+		return nil, fmt.Errorf("pack is not a Modrinth .mrpack")
 	}
 	res := &CheckResult{
 		Ref:            ref,

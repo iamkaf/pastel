@@ -56,9 +56,8 @@ func TestEnsureFabricLoaderUsesDeps(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(root, stale), []byte("old"), 0o644)
 
 	m := &Manifest{
-		SchemaVersion: SchemaVersion,
-		Name:          "t",
-		Version:       "1",
+		Name:    "t",
+		Version: "1",
 		Dependencies: map[string]string{
 			"minecraft":     "26.2",
 			"fabric-loader": "0.19.3",

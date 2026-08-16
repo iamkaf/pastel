@@ -246,12 +246,11 @@ func (l *LoadedMrpack) ToManifest(side string) *Manifest {
 		side = SideServer
 	}
 	m := &Manifest{
-		SchemaVersion: SchemaVersion,
-		Name:          idx.Name,
-		Version:       idx.VersionID,
-		Side:          side,
-		Dependencies:  map[string]string{},
-		Files:         nil,
+		Name:         idx.Name,
+		Version:      idx.VersionID,
+		Side:         side,
+		Dependencies: map[string]string{},
+		Files:        nil,
 	}
 	for k, v := range idx.Dependencies {
 		m.Dependencies[k] = v

@@ -1,4 +1,4 @@
-// Package maven fetches artifacts from a Maven repository layout (Kaf Maven).
+// Package maven fetches artifacts from a Maven repository layout.
 package maven
 
 import (
@@ -11,12 +11,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
-)
 
-// DefaultBase is Kaf's Maven host. Used only when an operator explicitly opts in
-// (e.g. repositories = ["https://maven.kaf.sh"] or pack publish verification).
-// Pastel never injects this by default — short coordinates require an explicit list.
-const DefaultBase = "https://maven.kaf.sh"
+	"github.com/iamkaf/pastel/internal/buildinfo"
+)
 
 // NormalizeRepositories trims bases, drops empties, and de-duplicates (order preserved).
 // Empty input yields an empty slice (no default host).
@@ -46,7 +43,7 @@ type Coordinate struct {
 	Artifact   string
 	Version    string
 	Classifier string
-	// Extension defaults to "json" for packs when empty at call site; stored as given.
+	// Extension is the artifact file extension when set on the coordinate.
 	Extension string
 }
 
@@ -96,7 +93,7 @@ func (c Coordinate) URL(base, ext string) string {
 
 // Client performs GETs against one or more Maven repos (ordered fallback).
 type Client struct {
-	// Bases is the ordered repository list (never empty after NewClient).
+	// Bases is the ordered repository list. Empty until repositories are provided.
 	Bases     []string
 	HTTP      *http.Client
 	UserAgent string
@@ -108,7 +105,7 @@ func NewClient(bases ...string) *Client {
 	return &Client{
 		Bases:     NormalizeRepositories(bases),
 		HTTP:      &http.Client{Timeout: 120 * time.Second},
-		UserAgent: "Pastel/0.1 (+https://kaf.sh)",
+		UserAgent: buildinfo.UserAgent(),
 	}
 }
 
@@ -137,11 +134,6 @@ func (cl *Client) Fetch(c Coordinate, ext string) ([]byte, error) {
 	return nil, last
 }
 
-// FetchPackJSON downloads a modpack manifest. Deprecated name; prefer FetchPack.
-func (cl *Client) FetchPackJSON(c Coordinate) ([]byte, error) {
-	return cl.FetchPack(c)
-}
-
 // FetchPack downloads pack bytes. Packs are published as .mrpack only.
 func (cl *Client) FetchPack(c Coordinate) ([]byte, error) {
 	data, err := cl.Fetch(c, "mrpack")
@@ -150,9 +142,6 @@ func (cl *Client) FetchPack(c Coordinate) ([]byte, error) {
 	}
 	return data, nil
 }
-
-// PublishBase is the authenticated upload host (Worker).
-const PublishBase = "https://z.kaf.sh"
 
 // LatestVersion reads maven-metadata.xml and returns the release or latest version.
 func (cl *Client) LatestVersion(group, artifact string) (string, error) {

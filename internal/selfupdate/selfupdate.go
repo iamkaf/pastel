@@ -16,6 +16,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/iamkaf/pastel/internal/buildinfo"
 )
 
 const (
@@ -104,14 +106,19 @@ func archiveName(goos, goarch string) string {
 	}
 }
 
-func download(client *http.Client, url string, limit int64) ([]byte, string, error) {
-	resp, err := client.Get(url)
+func download(client *http.Client, rawURL string, limit int64) ([]byte, string, error) {
+	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	if err != nil {
+		return nil, "", err
+	}
+	req.Header.Set("User-Agent", buildinfo.UserAgent())
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, "", err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, "", fmt.Errorf("%s returned %s", url, resp.Status)
+		return nil, "", fmt.Errorf("%s returned %s", rawURL, resp.Status)
 	}
 	reader := io.LimitReader(resp.Body, limit+1)
 	body, err := io.ReadAll(reader)

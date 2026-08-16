@@ -20,7 +20,7 @@ import (
 //	./pastel install https://modrinth.com/modpack/aristea
 //	./pastel install aristea
 //	./pastel install modrinth:aristea
-//	./pastel install com.iamkaf.modpacks:forever-world:1.1.0 -repo https://maven.kaf.sh
+//	./pastel install com.example.modpacks:example-pack:1.2.0 -repo https://maven.example.com
 func cmdInstall(args []string) error {
 	// Allow flags before or after the pack target (friends type either way).
 	flags, positional := splitFlags(args)
@@ -280,7 +280,7 @@ func printInstallHelp() {
 	ui.Detail("Modrinth page link")
 	fmt.Fprintln(ui.Out, "  "+ui.Blue("./pastel install https://…/pack.mrpack"))
 	ui.Detail("Direct pack file")
-	fmt.Fprintln(ui.Out, "  "+ui.Blue("./pastel install com.iamkaf.modpacks:forever-world:1.1.0 -repo https://maven.kaf.sh"))
+	fmt.Fprintln(ui.Out, "  "+ui.Blue("./pastel install com.example.modpacks:example-pack:1.2.0 -repo https://maven.example.com"))
 	ui.Detail("Maven coordinate (needs -repo)")
 	ui.Blank()
 	ui.Info("Then:  " + ui.Blue("./pastel run") + "  →  " + ui.Blue("./pastel console"))

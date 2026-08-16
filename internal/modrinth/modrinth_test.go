@@ -38,7 +38,7 @@ func TestLooksLikeSlug(t *testing.T) {
 	if !LooksLikeSlug("aristea") || !LooksLikeSlug("my-pack_1") {
 		t.Fatal("expected slug")
 	}
-	if LooksLikeSlug("com.iamkaf:x:1") || LooksLikeSlug("https://x") || LooksLikeSlug("a/b") || LooksLikeSlug("a@b") {
+	if LooksLikeSlug("com.example:x:1") || LooksLikeSlug("https://x") || LooksLikeSlug("a/b") || LooksLikeSlug("a@b") {
 		t.Fatal("expected non-slug")
 	}
 }
@@ -53,7 +53,7 @@ func TestParseSlugVersion(t *testing.T) {
 		t.Fatalf("@ %v %q %q", ok, slug, ver)
 	}
 	// Maven coords are not slug:version
-	if _, _, ok := ParseSlugVersion("com.iamkaf.modpacks:forever-world:1.1.0"); ok {
+	if _, _, ok := ParseSlugVersion("com.example.modpacks:example-pack:1.1.0"); ok {
 		t.Fatal("maven should not parse as slug:version")
 	}
 	if _, _, ok := ParseSlugVersion("modrinth:aristea:1.0"); ok {

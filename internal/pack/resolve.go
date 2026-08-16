@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/iamkaf/pastel/internal/buildinfo"
 	"github.com/iamkaf/pastel/internal/maven"
 	"github.com/iamkaf/pastel/internal/modrinth"
 )
@@ -21,7 +22,7 @@ import (
 type ResolveSpec struct {
 	Raw string
 	// Repositories is an ordered Maven base URL list for short coordinates.
-	// Empty defaults to Kaf Maven.
+	// Empty is an error; there is no default host.
 	Repositories []string
 	// CacheDir stores remote .mrpack downloads (e.g. server/.pastel/cache/packs).
 	CacheDir string
@@ -33,8 +34,7 @@ type ResolveSpec struct {
 type Resolved struct {
 	Manifest   *Manifest
 	Coordinate string
-	// Format is "mrpack" or "pastel".
-	Format string
+	Format     string
 	// Mrpack is set when overrides can be applied from a zip or directory.
 	Mrpack *LoadedMrpack
 }
@@ -190,7 +190,6 @@ func resolvePath(path, coord, side string) (*Resolved, error) {
 		return nil, err
 	}
 	if isZipBytes(data) {
-		// Could be mrpack or legacy zip pack
 		if loaded, err := loadMrpackZip(path, data); err == nil {
 			return mrpackResolved(loaded, coord, side), nil
 		}
@@ -203,11 +202,7 @@ func resolvePath(path, coord, side string) (*Resolved, error) {
 		return mrpackResolved(loaded, coord, side), nil
 	}
 
-	m, err := DecodeManifestBytes(data)
-	if err != nil {
-		return nil, err
-	}
-	return &Resolved{Manifest: m, Coordinate: coord, Format: "pastel"}, nil
+	return nil, fmt.Errorf("pack is not a Modrinth .mrpack")
 }
 
 func resolveURL(raw, cacheDir, side string) (*Resolved, error) {
@@ -267,7 +262,6 @@ func resolveBytes(data []byte, coord, cacheDir, side string) (*Resolved, error) 
 			return mrpackResolved(loaded, coord, side), nil
 		}
 	}
-	// bare index
 	if IsMrpackIndexJSON(data) {
 		loaded, err := DecodeMrpackBytes(data)
 		if err != nil {
@@ -275,12 +269,7 @@ func resolveBytes(data []byte, coord, cacheDir, side string) (*Resolved, error) 
 		}
 		return mrpackResolved(loaded, coord, side), nil
 	}
-	// legacy Pastel
-	m, err := DecodeManifestBytes(data)
-	if err != nil {
-		return nil, err
-	}
-	return &Resolved{Manifest: m, Coordinate: coord, Format: "pastel"}, nil
+	return nil, fmt.Errorf("pack is not a Modrinth .mrpack")
 }
 
 func hasMrpackIndex(data []byte) bool {
@@ -327,7 +316,7 @@ func httpGet(rawURL string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Pastel/0.1 (+https://kaf.sh)")
+	req.Header.Set("User-Agent", buildinfo.UserAgent())
 	client := &http.Client{Timeout: 10 * time.Minute}
 	res, err := client.Do(req)
 	if err != nil {

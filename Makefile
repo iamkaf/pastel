@@ -1,7 +1,7 @@
 export PATH := $(HOME)/.local/go/bin:$(PATH)
 
 VERSION ?= $(shell tr -d '[:space:]' < VERSION)
-LDFLAGS := -s -w -X main.version=$(VERSION)
+LDFLAGS := -s -w -X github.com/iamkaf/pastel/internal/buildinfo.Version=$(VERSION)
 SRC := ./cmd/pastel
 
 .PHONY: build check test cross clean
