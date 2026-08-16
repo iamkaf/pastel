@@ -129,13 +129,13 @@ Paths are resolved relative to the directory containing `server.pastel`.
 
 For a dedicated server, Pastel:
 
-1. selects `.mrpack` files whose `env.server` is not `unsupported`;
+1. selects `.mrpack` files whose `env.server` is not `unsupported`, including optional files;
 2. verifies downloads with the strongest hash published by the pack;
 3. applies `overrides/`, followed by `server-overrides/`;
 4. installs or aligns the loader from the pack dependencies;
 5. removes extra jars from `mods/` and stale managed root launcher jars.
 
-Pastel refuses to manage `world/`. It also refuses pack changes while the server is running. Extra jars under `mods/` are pruned during a normal refresh, so preview a change with `pastel refresh -dry-run` or use `-no-prune` when you deliberately maintain local jars.
+Pastel refuses to manage `world/`. It also refuses pack changes while the server is running. Extra jars under `mods/` are pruned during a normal refresh, so preview a change with `pastel refresh -dry-run` or use `-no-prune` when you deliberately maintain local jars. Jars that arrived through `overrides/mods/` or `server-overrides/mods/` are kept.
 
 Set `sync_on_run = false` while debugging local pack changes. `pastel run` will leave pack files alone, while an explicit `pastel refresh` will still reconcile them.
 
@@ -172,8 +172,6 @@ The short version:
 - mark client-only files with `env.server = "unsupported"`;
 - put shared files in `overrides/` and dedicated-server replacements in `server-overrides/`;
 - do not put worlds in the pack.
-
-See [the pack author guide](./docs/PACK.md) for resolution rules, override order, loader behavior, and Maven layout.
 
 ## Contributing
 
