@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/iamkaf/pastel/internal/buildinfo"
+	"github.com/iamkaf/pastel/internal/httpx"
 	"github.com/iamkaf/pastel/internal/jre"
 )
 
@@ -399,7 +399,7 @@ func ensureFabricServerJar(root, mc, loader string) (jarName string, changed boo
 }
 
 func latestFabricInstaller() (string, error) {
-	req, err := buildinfo.NewRequest(http.MethodGet, "https://meta.fabricmc.net/v2/versions/installer")
+	req, err := httpx.NewRequest(http.MethodGet, "https://meta.fabricmc.net/v2/versions/installer")
 	if err != nil {
 		return "", err
 	}
@@ -441,7 +441,7 @@ func downloadFile(rawURL, dest string) error {
 	tmp := dest + ".pastel-tmp"
 	defer os.Remove(tmp)
 
-	req, err := buildinfo.NewRequest(http.MethodGet, rawURL)
+	req, err := httpx.NewRequest(http.MethodGet, rawURL)
 	if err != nil {
 		return err
 	}

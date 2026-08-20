@@ -189,7 +189,7 @@ func acquirePack(target, versionFlag string, repos []string) (*acquired, error) 
 	}
 
 	// 5) Maven coordinate (group:artifact:version) — before slug:version shorthand
-	if isMavenCoord(target) {
+	if pack.IsMavenCoordinate(target) {
 		if len(repos) == 0 {
 			return nil, fmt.Errorf("Maven pack %q needs -repo https://… (no default host)", target)
 		}

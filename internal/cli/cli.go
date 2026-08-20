@@ -205,7 +205,7 @@ func loadPack(cfg *config.Config) (*pack.Resolved, error) {
 	raw := strings.TrimSpace(cfg.Pack)
 	// Only join relative filesystem paths to the server.pastel directory.
 	// Never path-join scheme pins (modrinth:, Maven coords, http(s), slug:ver, etc.).
-	if packRefIsRelativePath(raw) && !filepath.IsAbs(raw) {
+	if pack.IsRelativePathPin(raw) && !filepath.IsAbs(raw) {
 		raw = filepath.Join(filepath.Dir(cfg.Path()), raw)
 	}
 	cache := filepath.Join(cfg.Root(), ".pastel", "cache", "packs")
@@ -215,15 +215,6 @@ func loadPack(cfg *config.Config) (*pack.Resolved, error) {
 		CacheDir:     cache,
 		Side:         pack.SideServer,
 	})
-}
-
-// packRefIsRelativePath is true only for local file/dir pins that may be relative.
-func packRefIsRelativePath(raw string) bool {
-	return pack.IsRelativePathPin(raw)
-}
-
-func isMavenCoord(s string) bool {
-	return pack.IsMavenCoordinate(s)
 }
 
 func doSync(cf *commonFlags, cfg *config.Config, res *pack.Resolved) (*sync.Result, error) {

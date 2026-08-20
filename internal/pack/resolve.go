@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/iamkaf/pastel/internal/buildinfo"
+	"github.com/iamkaf/pastel/internal/httpx"
 	"github.com/iamkaf/pastel/internal/maven"
 	"github.com/iamkaf/pastel/internal/modrinth"
 )
@@ -50,45 +50,38 @@ func Resolve(spec ResolveSpec) (*Resolved, error) {
 		side = SideServer
 	}
 
-	if strings.HasPrefix(raw, "file:") {
+	switch ClassifyPin(raw) {
+	case PinFile:
 		path := stripFileURL(raw)
 		return resolvePath(path, "file:"+path, side)
-	}
-
-	if strings.HasPrefix(raw, "https://") || strings.HasPrefix(raw, "http://") {
-		// Modrinth project page → resolve to latest/pinned .mrpack
-		if slug, ver, ok := modrinth.ParsePageURL(raw); ok {
-			return resolveModrinth(slug, ver, "modrinth:"+slug, spec.CacheDir, side)
-		}
+	case PinURL:
 		return resolveURL(raw, spec.CacheDir, side)
-	}
-
-	if slug, ver, ok := modrinth.ParseRef(raw); ok {
-		pin := raw
-		return resolveModrinth(slug, ver, pin, spec.CacheDir, side)
-	}
-
-	// Friend shorthands in server.pastel: aristea:0.1.4 / aristea@0.1.4
-	if slug, ver, ok := modrinth.ParseSlugVersion(raw); ok {
-		return resolveModrinth(slug, ver, modrinth.Pin(slug, ver), spec.CacheDir, side)
-	}
-
-	if isCoordinate(raw) {
+	case PinModrinth:
+		return resolveModrinthRef(raw, spec.CacheDir, side)
+	case PinMaven:
 		return resolveMaven(raw, spec.Repositories, spec.CacheDir, side)
-	}
-
-	// Bare Modrinth slug as pack pin
-	if modrinth.LooksLikeSlug(raw) {
-		return resolveModrinth(raw, "", modrinth.Pin(raw, ""), spec.CacheDir, side)
-	}
-
-	// Relative/absolute path
-	path := raw
-	if _, err := os.Stat(path); err == nil {
-		return resolvePath(path, "file:"+path, side)
+	default: // PinPath
+		if _, err := os.Stat(raw); err == nil {
+			return resolvePath(raw, "file:"+raw, side)
+		}
 	}
 
 	return nil, fmt.Errorf("unrecognized pack reference %q (want .mrpack path/URL, modrinth:slug, slug@version, or Maven coordinate)", raw)
+}
+
+// resolveModrinthRef resolves a Modrinth pin: project page URL, modrinth:
+// ref, friend shorthand (aristea:0.1.4 / aristea@0.1.4), or bare slug.
+func resolveModrinthRef(raw, cacheDir, side string) (*Resolved, error) {
+	if slug, ver, ok := modrinth.ParsePageURL(raw); ok {
+		return resolveModrinth(slug, ver, "modrinth:"+slug, cacheDir, side)
+	}
+	if slug, ver, ok := modrinth.ParseRef(raw); ok {
+		return resolveModrinth(slug, ver, raw, cacheDir, side)
+	}
+	if slug, ver, ok := modrinth.ParseSlugVersion(raw); ok {
+		return resolveModrinth(slug, ver, modrinth.Pin(slug, ver), cacheDir, side)
+	}
+	return resolveModrinth(raw, "", modrinth.Pin(raw, ""), cacheDir, side)
 }
 
 func resolveModrinth(slug, version, pin, cacheDir, side string) (*Resolved, error) {
@@ -131,25 +124,24 @@ func resolveModrinth(slug, version, pin, cacheDir, side string) (*Resolved, erro
 	return res, nil
 }
 
+var modrinthHashes = []struct {
+	key   string
+	label string
+	sum   func([]byte) []byte
+}{
+	{"sha512", "SHA-512", func(b []byte) []byte { s := sha512.Sum512(b); return s[:] }},
+	{"sha256", "SHA-256", func(b []byte) []byte { s := sha256.Sum256(b); return s[:] }},
+	{"sha1", "SHA-1", func(b []byte) []byte { s := sha1.Sum(b); return s[:] }},
+}
+
 func verifyModrinthPack(data []byte, hashes map[string]string) error {
-	if want := strings.ToLower(strings.TrimSpace(hashes["sha512"])); want != "" {
-		got := sha512.Sum512(data)
-		if hex.EncodeToString(got[:]) != want {
-			return fmt.Errorf("modrinth pack SHA-512 mismatch")
+	for _, algo := range modrinthHashes {
+		want := strings.ToLower(strings.TrimSpace(hashes[algo.key]))
+		if want == "" {
+			continue
 		}
-		return nil
-	}
-	if want := strings.ToLower(strings.TrimSpace(hashes["sha256"])); want != "" {
-		got := sha256.Sum256(data)
-		if hex.EncodeToString(got[:]) != want {
-			return fmt.Errorf("modrinth pack SHA-256 mismatch")
-		}
-		return nil
-	}
-	if want := strings.ToLower(strings.TrimSpace(hashes["sha1"])); want != "" {
-		got := sha1.Sum(data)
-		if hex.EncodeToString(got[:]) != want {
-			return fmt.Errorf("modrinth pack SHA-1 mismatch")
+		if hex.EncodeToString(algo.sum(data)) != want {
+			return fmt.Errorf("modrinth pack %s mismatch", algo.label)
 		}
 		return nil
 	}
@@ -318,12 +310,11 @@ func cachePackBytes(cacheDir, coord string, data []byte, ext string) (string, er
 }
 
 func httpGet(rawURL string) ([]byte, error) {
-	req, err := buildinfo.NewRequest(http.MethodGet, rawURL)
+	req, err := httpx.NewRequest("GET", rawURL)
 	if err != nil {
 		return nil, err
 	}
-	client := buildinfo.HTTPClient()
-	res, err := client.Do(req)
+	res, err := httpx.Client().Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -343,8 +334,4 @@ func httpGet(rawURL string) ([]byte, error) {
 		return nil, fmt.Errorf("pack is too large (limit %d bytes)", maxPackBytes)
 	}
 	return data, nil
-}
-
-func isCoordinate(s string) bool {
-	return IsMavenCoordinate(s)
 }
