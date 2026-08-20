@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/iamkaf/pastel/internal/buildinfo"
 	"github.com/iamkaf/pastel/internal/maven"
@@ -137,6 +136,13 @@ func verifyModrinthPack(data []byte, hashes map[string]string) error {
 		got := sha512.Sum512(data)
 		if hex.EncodeToString(got[:]) != want {
 			return fmt.Errorf("modrinth pack SHA-512 mismatch")
+		}
+		return nil
+	}
+	if want := strings.ToLower(strings.TrimSpace(hashes["sha256"])); want != "" {
+		got := sha256.Sum256(data)
+		if hex.EncodeToString(got[:]) != want {
+			return fmt.Errorf("modrinth pack SHA-256 mismatch")
 		}
 		return nil
 	}
@@ -312,12 +318,11 @@ func cachePackBytes(cacheDir, coord string, data []byte, ext string) (string, er
 }
 
 func httpGet(rawURL string) ([]byte, error) {
-	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	req, err := buildinfo.NewRequest(http.MethodGet, rawURL)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", buildinfo.UserAgent())
-	client := &http.Client{Timeout: 10 * time.Minute}
+	client := buildinfo.HTTPClient()
 	res, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -341,12 +346,5 @@ func httpGet(rawURL string) ([]byte, error) {
 }
 
 func isCoordinate(s string) bool {
-	if strings.Contains(s, "/") || strings.Contains(s, `\`) {
-		return false
-	}
-	if strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://") {
-		return false
-	}
-	parts := strings.Split(s, ":")
-	return len(parts) >= 3 && len(parts) <= 4 && strings.Contains(parts[0], ".")
+	return IsMavenCoordinate(s)
 }

@@ -91,28 +91,32 @@ func (c *Config) Xmx() string {
 
 // UseNoGUI reports whether to pass nogui.
 func (c *Config) UseNoGUI() bool {
-	if c.NoGUI == nil {
-		return true
-	}
-	return *c.NoGUI
+	return boolOrDefault(c.NoGUI, true)
 }
 
 // ShouldSyncOnRun reports whether ./pastel run should refresh pack files first.
 // Default true when unset.
 func (c *Config) ShouldSyncOnRun() bool {
-	if c == nil || c.SyncOnRun == nil {
+	if c == nil {
 		return true
 	}
-	return *c.SyncOnRun
+	return boolOrDefault(c.SyncOnRun, true)
 }
 
 // ShouldAutoRestart reports whether crashed background servers should restart.
 // Default true when unset.
 func (c *Config) ShouldAutoRestart() bool {
-	if c == nil || c.AutoRestart == nil {
+	if c == nil {
 		return true
 	}
-	return *c.AutoRestart
+	return boolOrDefault(c.AutoRestart, true)
+}
+
+func boolOrDefault(b *bool, def bool) bool {
+	if b == nil {
+		return def
+	}
+	return *b
 }
 
 // MavenRepositories returns the ordered Maven base URLs for short coordinates.

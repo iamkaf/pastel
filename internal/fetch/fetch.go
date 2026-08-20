@@ -13,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/iamkaf/pastel/internal/buildinfo"
 	"github.com/iamkaf/pastel/internal/pack"
@@ -28,7 +27,7 @@ type Downloader struct {
 // New returns a Downloader with defaults.
 func New() *Downloader {
 	return &Downloader{
-		HTTP:      &http.Client{Timeout: 10 * time.Minute},
+		HTTP:      buildinfo.HTTPClient(),
 		UserAgent: buildinfo.UserAgent(),
 	}
 }
@@ -89,11 +88,11 @@ func (d *Downloader) EnsureFile(f pack.File, dest string) (changed bool, err err
 }
 
 func (d *Downloader) downloadTo(rawURL, dest string, expectedSize int64) error {
-	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	req, err := buildinfo.NewRequest(http.MethodGet, rawURL)
 	if err != nil {
 		return err
 	}
-	if d.UserAgent != "" {
+	if d.UserAgent != "" && d.UserAgent != buildinfo.UserAgent() {
 		req.Header.Set("User-Agent", d.UserAgent)
 	}
 	res, err := d.HTTP.Do(req)
