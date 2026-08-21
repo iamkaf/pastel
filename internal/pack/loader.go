@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/iamkaf/pastel/internal/buildinfo"
+	"github.com/iamkaf/pastel/internal/httpx"
 	"github.com/iamkaf/pastel/internal/jre"
 )
 
@@ -399,11 +399,10 @@ func ensureFabricServerJar(root, mc, loader string) (jarName string, changed boo
 }
 
 func latestFabricInstaller() (string, error) {
-	req, err := http.NewRequest(http.MethodGet, "https://meta.fabricmc.net/v2/versions/installer", nil)
+	req, err := httpx.NewRequest(http.MethodGet, "https://meta.fabricmc.net/v2/versions/installer")
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", buildinfo.UserAgent())
 	client := &http.Client{Timeout: 60 * time.Second}
 	res, err := client.Do(req)
 	if err != nil {
@@ -442,11 +441,10 @@ func downloadFile(rawURL, dest string) error {
 	tmp := dest + ".pastel-tmp"
 	defer os.Remove(tmp)
 
-	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	req, err := httpx.NewRequest(http.MethodGet, rawURL)
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", buildinfo.UserAgent())
 	client := &http.Client{
 		Timeout: 10 * time.Minute,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {

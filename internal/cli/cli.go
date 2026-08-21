@@ -205,7 +205,7 @@ func loadPack(cfg *config.Config) (*pack.Resolved, error) {
 	raw := strings.TrimSpace(cfg.Pack)
 	// Only join relative filesystem paths to the server.pastel directory.
 	// Never path-join scheme pins (modrinth:, Maven coords, http(s), slug:ver, etc.).
-	if packRefIsRelativePath(raw) && !filepath.IsAbs(raw) {
+	if pack.IsRelativePathPin(raw) && !filepath.IsAbs(raw) {
 		raw = filepath.Join(filepath.Dir(cfg.Path()), raw)
 	}
 	cache := filepath.Join(cfg.Root(), ".pastel", "cache", "packs")
@@ -215,45 +215,6 @@ func loadPack(cfg *config.Config) (*pack.Resolved, error) {
 		CacheDir:     cache,
 		Side:         pack.SideServer,
 	})
-}
-
-// packRefIsRelativePath is true only for local file/dir pins that may be relative.
-func packRefIsRelativePath(raw string) bool {
-	if raw == "" {
-		return false
-	}
-	low := strings.ToLower(raw)
-	if strings.HasPrefix(low, "http://") || strings.HasPrefix(low, "https://") || strings.HasPrefix(low, "file:") {
-		return false
-	}
-	if strings.HasPrefix(low, "modrinth:") {
-		return false
-	}
-	if isMavenCoord(raw) {
-		return false
-	}
-	// Friend shorthands that must not become server/aristea:0.1.4
-	if _, _, ok := modrinth.ParseSlugVersion(raw); ok {
-		return false
-	}
-	if modrinth.LooksLikeSlug(raw) {
-		return false
-	}
-	return true
-}
-
-func isMavenCoord(s string) bool {
-	if strings.Contains(s, "/") || strings.Contains(s, `\`) || strings.HasPrefix(s, "file:") {
-		return false
-	}
-	if strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://") {
-		return false
-	}
-	if strings.HasPrefix(strings.ToLower(s), "modrinth:") {
-		return false
-	}
-	parts := strings.Split(s, ":")
-	return len(parts) >= 3 && len(parts) <= 4 && strings.Contains(parts[0], ".")
 }
 
 func doSync(cf *commonFlags, cfg *config.Config, res *pack.Resolved) (*sync.Result, error) {
