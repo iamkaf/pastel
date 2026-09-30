@@ -159,16 +159,6 @@ func HashFile(path, algo string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// HashBytes returns the hex digest of b.
-func HashBytes(b []byte, algo string) (string, error) {
-	h, err := newHash(algo)
-	if err != nil {
-		return "", err
-	}
-	_, _ = h.Write(b)
-	return hex.EncodeToString(h.Sum(nil)), nil
-}
-
 func newHash(algo string) (hash.Hash, error) {
 	switch strings.ToLower(algo) {
 	case "sha512":

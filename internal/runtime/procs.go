@@ -221,7 +221,7 @@ func KillPID(pid int) error {
 		return fmt.Errorf("process %d is not running", pid)
 	}
 	_ = signalPID(pid, syscall.SIGTERM)
-	deadline := time.Now().Add(3 * time.Second)
+	deadline := time.Now().Add(stopGracePeriod)
 	for time.Now().Before(deadline) {
 		if !processAlive(pid) {
 			return nil

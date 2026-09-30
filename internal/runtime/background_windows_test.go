@@ -164,7 +164,9 @@ func newWindowsTestRoot(t *testing.T) string {
 
 func startWindowsSupervisorProcess(t *testing.T, root, mode string) *exec.Cmd {
 	t.Helper()
-	cmd := exec.Command(os.Args[0], "-test.run=^TestWindowsSupervisorProcess$")
+	// The trailing arguments make the command line look like a real supervisor for root,
+	// which is how stop recognizes a tracked supervisor PID.
+	cmd := exec.Command(os.Args[0], "-test.run=^TestWindowsSupervisorProcess$", "--", "__supervise", root)
 	cmd.Env = append(os.Environ(), supervisorTestRootEnv+"="+root, supervisorTestModeEnv+"="+mode)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

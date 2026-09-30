@@ -24,27 +24,20 @@ type File struct {
 	FileSize  int64
 }
 
-// Launch describes how to start the dedicated server after sync.
+// Launch describes how to start the dedicated server after sync. EnsureLoader sets it.
 //
 // Supported shapes:
-//   - Fabric / Quilt / simple: -jar <jar> [nogui]
+//   - Fabric / Quilt / vanilla / legacy Forge: -jar <jar> [nogui]
 //   - NeoForge / modern Forge: @user_jvm_args.txt @libraries/.../unix_args.txt [nogui]
-//   - Main class: -cp ... <mainClass> (rare; use ExtraArgs for classpath)
 type Launch struct {
-	// Kind is fabric | neoforge | forge | quilt | vanilla (optional; derived from deps if empty).
+	// Kind is fabric | neoforge | forge | quilt | vanilla.
 	Kind string
-	// Jar is a path relative to server root for -jar launch (Fabric, Quilt, some Forge).
+	// Jar is a path relative to server root for -jar launch.
 	Jar string
 	// ArgsFile is a relative @args file (NeoForge/Forge unix_args.txt or win_args.txt).
 	ArgsFile string
 	// JVMArgsFile is optional @user_jvm_args.txt (memory often also set via -Xmx by Pastel).
 	JVMArgsFile string
-	// MainClass launches without -jar when set (and Jar empty).
-	MainClass string
-	// ExtraArgs are appended (and may include -cp / classpath pieces).
-	ExtraArgs []string
-	// NoGUI when true (default) appends "nogui".
-	NoGUI *bool
 }
 
 // Validate checks required fields.

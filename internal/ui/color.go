@@ -52,12 +52,6 @@ func init() {
 	enableWindowsANSI()
 }
 
-// Enabled reports whether color escapes will be emitted.
-func Enabled() bool { return enabled }
-
-// SetEnabled forces color on or off (tests, flags).
-func SetEnabled(v bool) { enabled = v }
-
 func detectColor() bool {
 	if os.Getenv("NO_COLOR") != "" {
 		return false
@@ -121,8 +115,3 @@ func Brand() string {
 
 // Dim is an alias for muted secondary text.
 func Dim(s string) string { return Muted(s) }
-
-// Sprint joins parts with spaces (no trailing newline).
-func Sprint(parts ...string) string {
-	return strings.Join(parts, " ")
-}

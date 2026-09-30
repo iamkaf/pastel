@@ -65,7 +65,7 @@ From the folder that should become the server:
 ./pastel console
 ```
 
-`install` accepts a Modrinth slug, a Modrinth modpack page, a direct `.mrpack` URL, a local `.mrpack`, or a Maven coordinate with an explicit repository:
+`install` accepts a Modrinth slug, a Modrinth modpack page, a direct HTTPS `.mrpack` URL, a local `.mrpack`, or a Maven coordinate with an explicit HTTPS repository:
 
 ```bash
 ./pastel install aristea@0.1.4
@@ -75,7 +75,7 @@ From the folder that should become the server:
 ./pastel install com.example:my-pack:1.2.0 -repo https://maven.example.com
 ```
 
-Pastel writes `server.pastel`, applies the pack, and prepares the loader. The first `run` also chooses a suitable Java runtime. If the system Java is too old, Pastel downloads a Temurin JRE into `.pastel/jre/` and verifies its published SHA-256 checksum before installing it.
+Pastel writes `server.pastel` with the exact pack version, applies the pack, and prepares the loader. Installing a Modrinth slug without a version pins its latest release; `pastel update` moves the pin later. The first `run` also chooses a suitable Java runtime. If the system Java is too old, Pastel downloads a Temurin JRE into `.pastel/jre/` and verifies its published SHA-256 checksum before installing it.
 
 By running a Minecraft server with Pastel, you indicate your agreement to [Mojang's Minecraft EULA](https://aka.ms/MinecraftEULA). Pastel writes `eula=true` when it starts the server.
 
@@ -135,7 +135,7 @@ For a dedicated server, Pastel:
 4. installs or aligns the loader from the pack dependencies;
 5. removes extra jars from `mods/` and stale managed root launcher jars.
 
-Pastel refuses to manage `world/`. It also refuses pack changes while the server is running. Extra jars under `mods/` are pruned during a normal refresh, so preview a change with `pastel refresh -dry-run` or use `-no-prune` when you deliberately maintain local jars. Jars that arrived through `overrides/mods/` or `server-overrides/mods/` are kept.
+Pastel refuses to let a pack write `world/`, `.pastel/`, or `server.pastel`. It also refuses pack changes while the server is running, including the refresh at the start of `pastel run`. Extra jars under `mods/` are pruned during a normal refresh, so preview a change with `pastel refresh -dry-run` or use `-no-prune` when you deliberately maintain local jars. Jars that arrived through `overrides/mods/` or `server-overrides/mods/` are kept.
 
 Set `sync_on_run = false` while debugging local pack changes. `pastel run` will leave pack files alone, while an explicit `pastel refresh` will still reconcile them.
 
@@ -183,7 +183,7 @@ make check
 make cross
 ```
 
-`make check` verifies formatting, modules, vetting, race-enabled tests, and the normal package suite. `make cross` builds the six GitHub release targets.
+`make check` verifies formatting and modules, vets for Linux, Windows, and macOS, and runs the race-enabled tests. `make cross` builds the six GitHub release targets.
 
 The source is grouped by responsibility:
 

@@ -8,14 +8,6 @@ import (
 	"strings"
 )
 
-// UseNoGUI reports whether to pass nogui (default true).
-func (l *Launch) UseNoGUI() bool {
-	if l == nil || l.NoGUI == nil {
-		return true
-	}
-	return *l.NoGUI
-}
-
 // ResolvedKind returns launch kind from Launch.Kind or manifest dependencies.
 func (m *Manifest) ResolvedKind() string {
 	if m != nil && m.Launch != nil && m.Launch.Kind != "" {
@@ -36,28 +28,19 @@ func (m *Manifest) ResolvedKind() string {
 }
 
 // BuildJavaArgs builds the argument list after the java binary for this pack.
-// xmx is e.g. "4G" (without -Xmx). root is the server directory for resolving paths.
-func (m *Manifest) BuildJavaArgs(root, xmx string) ([]string, error) {
+// xmx is e.g. "4G" (without -Xmx); jvmArgs follow it. root resolves launch paths.
+func (m *Manifest) BuildJavaArgs(root, xmx string, jvmArgs []string, nogui bool) ([]string, error) {
 	if xmx == "" {
 		xmx = "4G"
 	}
-	args := []string{"-Xmx" + xmx}
-
 	l := m.Launch
 	if l == nil {
-		// Infer a jar from common names
-		if jar := findExistingJar(root, commonServerJarNames(m.ResolvedKind())...); jar != "" {
-			args = append(args, "-jar", jar)
-			if true {
-				args = append(args, "nogui")
-			}
-			return args, nil
-		}
-		return nil, fmt.Errorf("pack has no launch config and no known server jar was found")
+		return nil, fmt.Errorf("the pack's loader is not installed yet; run ./pastel refresh")
 	}
+	args := append([]string{"-Xmx" + xmx}, jvmArgs...)
 
-	// Optional JVM args file (Forge/NeoForge user_jvm_args.txt) — skip -Xmx duplication if file sets it;
-	// Pastel still passes -Xmx first so friend memory setting wins when the args file allows override.
+	// Pastel passes -Xmx first so the server.pastel memory setting wins when the
+	// Forge/NeoForge user_jvm_args.txt allows an override.
 	if l.JVMArgsFile != "" {
 		p := filepath.Join(root, filepath.FromSlash(l.JVMArgsFile))
 		if st, err := os.Stat(p); err == nil && !st.IsDir() {
@@ -65,57 +48,40 @@ func (m *Manifest) BuildJavaArgs(root, xmx string) ([]string, error) {
 		}
 	}
 
-	if l.ArgsFile != "" {
-		p := filepath.Join(root, filepath.FromSlash(l.ArgsFile))
-		if st, err := os.Stat(p); err != nil || st.IsDir() {
-			// Try platform alternate: unix_args.txt <-> win_args.txt
-			alt := alternateArgsFile(l.ArgsFile)
-			if alt != "" {
-				p2 := filepath.Join(root, filepath.FromSlash(alt))
-				if st, err := os.Stat(p2); err == nil && !st.IsDir() {
-					p = p2
-				} else {
-					return nil, fmt.Errorf("launch args file not found: %s", l.ArgsFile)
-				}
-			} else {
-				return nil, fmt.Errorf("launch args file not found: %s", l.ArgsFile)
-			}
+	switch {
+	case l.ArgsFile != "":
+		p, err := existingArgsFile(root, l.ArgsFile)
+		if err != nil {
+			return nil, err
 		}
 		args = append(args, "@"+p)
-		args = append(args, l.ExtraArgs...)
-		if l.UseNoGUI() {
-			args = append(args, "nogui")
-		}
-		return args, nil
-	}
-
-	if l.Jar != "" {
+	case l.Jar != "":
 		p := filepath.Join(root, filepath.FromSlash(l.Jar))
 		if st, err := os.Stat(p); err != nil || st.IsDir() {
-			// bare name in root
-			p = filepath.Join(root, filepath.Base(l.Jar))
-			if st, err := os.Stat(p); err != nil || st.IsDir() {
-				return nil, fmt.Errorf("launch jar not found: %s", l.Jar)
-			}
+			return nil, fmt.Errorf("launch jar not found: %s", l.Jar)
 		}
-		args = append(args, l.ExtraArgs...)
 		args = append(args, "-jar", p)
-		if l.UseNoGUI() {
-			args = append(args, "nogui")
-		}
-		return args, nil
+	default:
+		return nil, fmt.Errorf("launch config needs a jar or an args file")
 	}
-
-	if l.MainClass != "" {
-		args = append(args, l.ExtraArgs...)
-		args = append(args, l.MainClass)
-		if l.UseNoGUI() {
-			args = append(args, "nogui")
-		}
-		return args, nil
+	if nogui {
+		args = append(args, "nogui")
 	}
+	return args, nil
+}
 
-	return nil, fmt.Errorf("launch config needs jar, argsFile, or mainClass")
+// existingArgsFile returns rel, or its unix/win counterpart, as an absolute path.
+func existingArgsFile(root, rel string) (string, error) {
+	for _, candidate := range []string{rel, alternateArgsFile(rel)} {
+		if candidate == "" {
+			continue
+		}
+		p := filepath.Join(root, filepath.FromSlash(candidate))
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			return p, nil
+		}
+	}
+	return "", fmt.Errorf("launch args file not found: %s", rel)
 }
 
 func alternateArgsFile(path string) string {
@@ -136,19 +102,6 @@ func PreferredArgsFileName() string {
 		return "win_args.txt"
 	}
 	return "unix_args.txt"
-}
-
-func commonServerJarNames(kind string) []string {
-	switch kind {
-	case "fabric":
-		return []string{} // prefix scan elsewhere
-	case "quilt":
-		return []string{"quilt-server-launch.jar", "server.jar"}
-	case "neoforge", "forge":
-		return []string{"server.jar", "forge-server.jar"}
-	default:
-		return []string{"server.jar"}
-	}
 }
 
 func findExistingJar(root string, names ...string) string {

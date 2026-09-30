@@ -40,8 +40,6 @@ type Options struct {
 	PruneMods      bool
 	DryRun         bool
 	Report         Reporter
-	// DownloadWorkers limits concurrent downloads (0 = default).
-	DownloadWorkers int
 	// Mrpack supplies overrides/ and server-overrides/ (optional).
 	Mrpack *pack.LoadedMrpack
 	// Side for override layers (default server).
@@ -55,7 +53,6 @@ type Result struct {
 	Overrides  int
 	Loader     bool // true if a loader jar was installed this run
 	Pruned     []string
-	ServerJar  string
 }
 
 type fileJob struct {
@@ -79,10 +76,7 @@ func Run(opt Options) (*Result, error) {
 		return nil, err
 	}
 
-	workers := opt.DownloadWorkers
-	if workers <= 0 {
-		workers = DefaultDownloadWorkers
-	}
+	workers := DefaultDownloadWorkers
 
 	dl := fetch.New()
 	res := &Result{}
@@ -93,9 +87,6 @@ func Run(opt Options) (*Result, error) {
 	var jobs []fileJob
 	for _, f := range opt.Manifest.Files {
 		rel := filepath.FromSlash(f.Path)
-		if strings.HasPrefix(rel, "world"+string(os.PathSeparator)) || rel == "world" {
-			return nil, fmt.Errorf("refusing to manage world path %q", f.Path)
-		}
 		dest := filepath.Join(root, rel)
 		slash := filepath.ToSlash(f.Path)
 		if strings.HasPrefix(slash, "mods/") {
@@ -205,8 +196,6 @@ func Run(opt Options) (*Result, error) {
 		f.Flush()
 	}
 
-	res.ServerJar = resolveServerJar(root, opt.Manifest)
-
 	if !opt.DryRun {
 		st := &state.State{
 			PackCoordinate: opt.PackCoordinate,
@@ -217,7 +206,6 @@ func Run(opt Options) (*Result, error) {
 			ModCount:       opt.Manifest.ModCount(),
 			AppliedAt:      time.Now().UTC(),
 			FileCount:      len(opt.Manifest.Files) + res.Overrides,
-			ServerJar:      res.ServerJar,
 		}
 		if err := state.Save(root, st); err != nil {
 			return res, fmt.Errorf("save state: %w", err)
@@ -356,45 +344,4 @@ func pruneRootLaunchers(root string, wanted map[string]struct{}, m *pack.Manifes
 		res.Pruned = append(res.Pruned, name)
 	}
 	return nil
-}
-
-// resolveServerJar returns a path for display / legacy jar-mode checks.
-// Args-file loaders (NeoForge/Forge) may return "" — Start uses BuildJavaArgs instead.
-func resolveServerJar(root string, m *pack.Manifest) string {
-	if m.Launch != nil && m.Launch.Jar != "" {
-		p := filepath.Join(root, filepath.FromSlash(m.Launch.Jar))
-		if st, err := os.Stat(p); err == nil && !st.IsDir() {
-			return p
-		}
-		p = filepath.Join(root, filepath.Base(m.Launch.Jar))
-		if st, err := os.Stat(p); err == nil && !st.IsDir() {
-			return p
-		}
-	}
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return ""
-	}
-	// Prefer loader-specific jars, then server.jar
-	var fallback string
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		name := e.Name()
-		if !strings.HasSuffix(strings.ToLower(name), ".jar") {
-			continue
-		}
-		lower := strings.ToLower(name)
-		if strings.HasPrefix(lower, "fabric-server-") || strings.HasPrefix(lower, "quilt-server-") {
-			return filepath.Join(root, name)
-		}
-		if strings.HasPrefix(lower, "neoforge-") || strings.HasPrefix(lower, "forge-") {
-			return filepath.Join(root, name)
-		}
-		if lower == "server.jar" {
-			fallback = filepath.Join(root, name)
-		}
-	}
-	return fallback
 }

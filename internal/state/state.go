@@ -20,7 +20,6 @@ type State struct {
 	ModCount       int       `json:"modCount,omitempty"`
 	AppliedAt      time.Time `json:"appliedAt"`
 	FileCount      int       `json:"fileCount"`
-	ServerJar      string    `json:"serverJar,omitempty"`
 }
 
 // Dir returns the absolute .pastel directory for a server root.

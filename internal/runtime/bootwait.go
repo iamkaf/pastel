@@ -251,10 +251,6 @@ func lastNonEmptyLogLineSince(path string, startOff int64) string {
 	return ""
 }
 
-func lastNonEmptyLogLine(path string) string {
-	return lastNonEmptyLogLineSince(path, 0)
-}
-
 func readEnter(ch chan struct{}) {
 	buf := make([]byte, 64)
 	for {

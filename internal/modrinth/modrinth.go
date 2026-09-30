@@ -134,14 +134,14 @@ func (c *Client) ResolveModpack(idOrSlug, version string) (*Pack, error) {
 	if slug == "" {
 		slug = p.ID
 	}
-	pin := "modrinth:" + slug
-	if version != "" {
-		// Pin the exact version the user asked for (id or number).
-		pin = "modrinth:" + slug + ":" + version
+	// Always pin the exact version. A slug-only pin would let every refresh move the
+	// server to a newer pack, possibly a new Minecraft version; ./pastel update is the
+	// deliberate way forward.
+	pinned := version
+	if pinned == "" || pinned == "latest" {
+		pinned = v.VersionNumber
 	}
-	// When installing "latest", track the channel by slug only so ./pastel update
-	// / refresh can move forward. The resolved version is still used for the download.
-	return &Pack{Project: *p, Version: *v, File: *f, Pin: pin}, nil
+	return &Pack{Project: *p, Version: *v, File: *f, Pin: "modrinth:" + slug + ":" + pinned}, nil
 }
 
 func displayProject(p *Project) string {

@@ -171,7 +171,7 @@ func HelpBlock() {
 	fmt.Fprintln(Err, "  "+Blue("./pastel self-update")+"     Install the latest verified "+Brand()+" release")
 	Blank()
 	fmt.Fprintln(Err, Pink("Optional flags"))
-	fmt.Fprintln(Err, "  "+Dim("-memory 4G")+"       Memory for install / run")
+	fmt.Fprintln(Err, "  "+Dim("-memory 4G")+"       Memory for install")
 	fmt.Fprintln(Err, "  "+Dim("-repo URL")+"        Maven host for group:artifact:version pins")
 	fmt.Fprintln(Err, "  "+Dim("-yes")+"             Skip confirmations (scripts)")
 	fmt.Fprintln(Err, "  "+Dim("-config path")+"     Where your server.pastel file is")

@@ -41,7 +41,11 @@ func startBackground(opt Options, java string, args []string) error {
 	if err := hold.Start(); err != nil {
 		return fmt.Errorf("console hold: %w", err)
 	}
-	_ = os.WriteFile(state.HoldPIDPath(opt.Root), []byte(strconv.Itoa(hold.Process.Pid)+"\n"), 0o644)
+	// Without its PID file nothing could stop the hold process later.
+	if err := os.WriteFile(state.HoldPIDPath(opt.Root), []byte(strconv.Itoa(hold.Process.Pid)+"\n"), 0o644); err != nil {
+		_ = hold.Process.Kill()
+		return fmt.Errorf("console hold: %w", err)
+	}
 	_ = hold.Process.Release()
 
 	time.Sleep(100 * time.Millisecond)

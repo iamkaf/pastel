@@ -16,10 +16,12 @@ check:
 	test -z "$$(gofmt -l .)"
 	go mod verify
 	go vet ./...
+	GOOS=windows go vet ./...
+	GOOS=darwin go vet ./...
 	go test -race ./...
 
 # Build the same target matrix published by GitHub Releases.
-cross: build
+cross:
 	CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -trimpath -ldflags "$(LDFLAGS)" -o bin/pastel-darwin-arm64  $(SRC)
 	CGO_ENABLED=0 GOOS=darwin  GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS)" -o bin/pastel-darwin-amd64  $(SRC)
 	CGO_ENABLED=0 GOOS=linux   GOARCH=amd64 go build -trimpath -ldflags "$(LDFLAGS)" -o bin/pastel-linux-amd64   $(SRC)

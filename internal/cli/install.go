@@ -159,7 +159,10 @@ func acquirePack(target, versionFlag string, repos []string) (*acquired, error) 
 	}
 
 	// 3) Direct .mrpack URL
-	if strings.HasPrefix(target, "https://") || strings.HasPrefix(target, "http://") {
+	if strings.HasPrefix(strings.ToLower(target), "http://") {
+		return nil, fmt.Errorf("pack URLs must use https:// so the download can't be tampered with")
+	}
+	if strings.HasPrefix(strings.ToLower(target), "https://") {
 		if looksLikeMrpackURL(target) {
 			name := filepath.Base(target)
 			if u, err := url.Parse(target); err == nil {
@@ -227,14 +230,8 @@ func acquireModrinth(slug, version string) (*acquired, error) {
 	if title == "" {
 		title = mp.Project.Slug
 	}
-	// Always store a canonical modrinth: pin (never bare slug:version — loadPack must not
-	// treat it as a relative path under the server folder).
-	pin := mp.Pin
-	if !strings.HasPrefix(strings.ToLower(pin), "modrinth:") {
-		pin = modrinth.Pin(mp.Project.Slug, mp.Version.VersionNumber)
-	}
 	return &acquired{
-		Pin:     pin,
+		Pin:     mp.Pin,
 		Title:   title,
 		Version: mp.Version.VersionNumber,
 	}, nil
@@ -273,7 +270,7 @@ func printInstallHelp() {
 	ui.Step("Pick one of these:")
 	ui.Blank()
 	fmt.Fprintln(ui.Out, "  "+ui.Blue("./pastel install aristea"))
-	ui.Detail("Modrinth modpack (latest)")
+	ui.Detail("Modrinth modpack (pins the latest version)")
 	fmt.Fprintln(ui.Out, "  "+ui.Blue("./pastel install aristea:0.1.4")+"   or   "+ui.Blue("aristea@0.1.4"))
 	ui.Detail("Specific version")
 	fmt.Fprintln(ui.Out, "  "+ui.Blue("./pastel install https://modrinth.com/modpack/aristea"))
