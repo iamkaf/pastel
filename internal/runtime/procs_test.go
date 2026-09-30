@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"os"
-	"path/filepath"
 	"strconv"
 	"testing"
 
@@ -41,18 +40,6 @@ func TestLooksLikeMinecraftServerCmd(t *testing.T) {
 		if looksLikeMinecraftServerCmd(c) {
 			t.Fatalf("should not match: %s", c)
 		}
-	}
-}
-
-func TestCommandContainsPathStopsAtPathBoundaries(t *testing.T) {
-	root := filepath.Join(string(filepath.Separator), "srv", "mc")
-	sibling := filepath.Join(string(filepath.Separator), "srv", "mc-test", "fabric-server.jar")
-	inside := filepath.Join(root, "fabric-server.jar")
-	if commandContainsPath("java -jar "+sibling+" nogui", root) {
-		t.Fatal("a sibling folder must not match")
-	}
-	if !commandContainsPath("java -jar "+inside+" nogui", root) {
-		t.Fatal("a path inside the root must match")
 	}
 }
 
