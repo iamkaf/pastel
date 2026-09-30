@@ -1,6 +1,13 @@
 package runtime
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"strconv"
+	"testing"
+
+	"github.com/iamkaf/pastel/internal/state"
+)
 
 func TestCwdMatchesRoot(t *testing.T) {
 	if !cwdMatchesRoot("/srv/pastel", "/srv/pastel") {
@@ -34,5 +41,40 @@ func TestLooksLikeMinecraftServerCmd(t *testing.T) {
 		if looksLikeMinecraftServerCmd(c) {
 			t.Fatalf("should not match: %s", c)
 		}
+	}
+}
+
+func TestCommandContainsPathStopsAtPathBoundaries(t *testing.T) {
+	root := filepath.Join(string(filepath.Separator), "srv", "mc")
+	sibling := filepath.Join(string(filepath.Separator), "srv", "mc-test", "fabric-server.jar")
+	inside := filepath.Join(root, "fabric-server.jar")
+	if commandContainsPath("java -jar "+sibling+" nogui", root) {
+		t.Fatal("a sibling folder must not match")
+	}
+	if !commandContainsPath("java -jar "+inside+" nogui", root) {
+		t.Fatal("a path inside the root must match")
+	}
+}
+
+func TestStalePIDFileDoesNotClaimAnUnrelatedProcess(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(state.Dir(root), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// This test process is alive but is not a Pastel supervisor or a Minecraft server.
+	self := []byte(strconv.Itoa(os.Getpid()) + "\n")
+	for _, path := range []string{state.PIDPath(root), state.SupervisorPIDPath(root), state.HoldPIDPath(root)} {
+		if err := os.WriteFile(path, self, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, ok := serverPID(root); ok {
+		t.Fatal("server pid file trusted an unrelated process")
+	}
+	if _, ok := supervisorPID(root); ok {
+		t.Fatal("supervisor pid file trusted an unrelated process")
+	}
+	if _, ok := holdPID(root); ok {
+		t.Fatal("hold pid file trusted an unrelated process")
 	}
 }

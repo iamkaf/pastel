@@ -328,9 +328,6 @@ func cmdRefresh(args []string) error {
 		ui.Step(fmt.Sprintf("Refreshing %s %s…", ui.Pink(manifest.Name), ui.Blue("v"+manifest.Version)))
 	}
 	ui.Detail(resolved.Coordinate)
-	if resolved.Format == "mrpack" {
-		ui.Detail("format: mrpack")
-	}
 	res, err := doSync(cf, cfg, resolved)
 	if err != nil {
 		return fmt.Errorf("refresh failed: %w", err)
@@ -362,6 +359,10 @@ func cmdRun(args []string) error {
 	if err != nil {
 		return err
 	}
+	// Refreshing below rewrites mods and configs, so check before touching anything.
+	if err := requireServerStopped(cfg.Root()); err != nil {
+		return err
+	}
 	resolved, err := loadPack(cfg)
 	if err != nil {
 		return fmt.Errorf("couldn't load the modpack: %w", err)
@@ -369,32 +370,20 @@ func cmdRun(args []string) error {
 	manifest := resolved.Manifest
 	ui.Step(fmt.Sprintf("Getting %s ready…", ui.Pink(manifest.Name)))
 	ui.Detail(resolved.Coordinate)
-	if resolved.Format == "mrpack" {
-		ui.Detail("format: mrpack")
-	}
 
-	var jar string
 	if cfg.ShouldSyncOnRun() {
 		res, err := doSync(cf, cfg, resolved)
 		if err != nil {
 			return fmt.Errorf("refresh failed: %w", err)
 		}
 		printSyncSummary(res, false, manifest.Name, manifest.Version, "")
-		jar = res.ServerJar
 	} else {
 		ui.Warn("sync_on_run = false — not refreshing pack files (local mods/config kept as-is)")
 		ui.Detail("Run " + ui.Blue("./pastel refresh") + " when you want pack changes again.")
 		// Still align Fabric/NeoForge launcher with pack deps (no mods download).
 		if _, err := pack.EnsureLoader(cfg.Root(), manifest, ""); err != nil {
-			ui.Detail("loader: " + err.Error())
+			return fmt.Errorf("loader: %w", err)
 		}
-	}
-	if jar == "" && manifest.Launch != nil {
-		jar = runtime.ResolveJar(cfg.Root(), manifest.Launch.Jar)
-	}
-	extra := append([]string{}, cfg.ExtraJavaArgs...)
-	if manifest.Launch != nil {
-		extra = append(extra, manifest.Launch.ExtraArgs...)
 	}
 
 	mc := manifest.Minecraft()
@@ -417,8 +406,7 @@ func cmdRun(args []string) error {
 		Java:        javaBin,
 		Xmx:         cfg.Xmx(),
 		Manifest:    manifest,
-		Jar:         jar,
-		ExtraArgs:   extra,
+		ExtraArgs:   cfg.ExtraJavaArgs,
 		NoGUI:       cfg.UseNoGUI(),
 		Minecraft:   mc,
 		JavaMajor:   need,
@@ -541,7 +529,6 @@ type snapshot struct {
 }
 
 type homeHints struct {
-	noConfig        bool
 	neverSync       bool
 	running         bool
 	updateAvailable bool
@@ -592,42 +579,36 @@ func gatherSnapshot(cf *commonFlags) (*snapshot, error) {
 	if baseline == "" {
 		baseline = s.PinVer
 	}
+	if err := checkPackUpdate(s, cfg, baseline); err != nil {
+		s.CheckErr = err.Error()
+	}
+	return s, nil
+}
+
+// checkPackUpdate fills the latest-version fields for pins that have an upgrade
+// channel. Direct URLs and local files have none and leave them empty.
+func checkPackUpdate(s *snapshot, cfg *config.Config, baseline string) error {
 	if ref, ok := pack.ParseRef(cfg.Pack); ok {
 		chk, err := pack.CheckUpdate(cfg.MavenRepositories(), ref, baseline)
 		if err != nil {
-			s.CheckErr = err.Error()
-		} else {
-			s.LatestName = chk.LatestName
-			s.LatestVer = chk.LatestVer
-			s.LatestMC = chk.LatestMC
-			s.UpdateAvailable = chk.UpdateAvailable
-			if st != nil && pack.CompareVersions(st.PackVersion, chk.LatestVer) < 0 {
-				s.UpdateAvailable = true
-			}
+			return err
 		}
-	} else if slug, _, ok := modrinth.ParseRef(cfg.Pack); ok {
-		chk, err := modrinth.New().CheckUpdate(slug, baseline)
-		if err != nil {
-			s.CheckErr = err.Error()
-		} else {
-			s.LatestName = chk.LatestName
-			s.LatestVer = chk.LatestVer
-			s.LatestMC = chk.LatestMC
-			s.UpdateAvailable = chk.UpdateAvailable
-		}
-	} else if slug, _, ok := modrinth.ParsePageURL(cfg.Pack); ok {
-		chk, err := modrinth.New().CheckUpdate(slug, baseline)
-		if err != nil {
-			s.CheckErr = err.Error()
-		} else {
-			s.LatestName = chk.LatestName
-			s.LatestVer = chk.LatestVer
-			s.LatestMC = chk.LatestMC
-			s.UpdateAvailable = chk.UpdateAvailable
-		}
+		s.LatestName, s.LatestVer, s.LatestMC, s.UpdateAvailable = chk.LatestName, chk.LatestVer, chk.LatestMC, chk.UpdateAvailable
+		return nil
 	}
-
-	return s, nil
+	slug, _, ok := modrinth.ParseRef(cfg.Pack)
+	if !ok {
+		slug, _, ok = modrinth.ParsePageURL(cfg.Pack)
+	}
+	if !ok {
+		return nil
+	}
+	chk, err := modrinth.New().CheckUpdate(slug, baseline)
+	if err != nil {
+		return err
+	}
+	s.LatestName, s.LatestVer, s.LatestMC, s.UpdateAvailable = chk.LatestName, chk.LatestVer, chk.LatestMC, chk.UpdateAvailable
+	return nil
 }
 
 func printSnapshot(s *snapshot, detailed bool) {
@@ -724,7 +705,7 @@ func printSnapshot(s *snapshot, detailed bool) {
 			ui.Warn("Couldn't load pin")
 			ui.Detail(s.PinErr)
 		} else {
-			ui.Info("This pin isn't on Maven — no upgrade check")
+			ui.Info("This pin has no update channel — no upgrade check")
 		}
 	} else if s.UpdateAvailable {
 		// Line 1: what's new · Line 2: how to upgrade
@@ -766,8 +747,6 @@ func hintsFromSnapshot(s *snapshot) homeHints {
 func printCommandMenu(h homeHints) {
 	ui.Title("Suggested next step")
 	switch {
-	case h.noConfig:
-		ui.Step("Add a server.pastel file next to this program, then run ./pastel again.")
 	case h.neverSync:
 		ui.Step("Files not downloaded yet — " + ui.Blue("./pastel refresh") + " then " + ui.Blue("./pastel run") + ".")
 	case h.updateAvailable:
@@ -801,13 +780,16 @@ func cmdStop(args []string) error {
 		return runtime.StopWith(".", runtime.StopOptions{Orphans: true})
 	}
 	if *pid > 0 {
-		root := "."
+		root, err := os.Getwd()
+		if err != nil {
+			return err
+		}
 		if *configPath != "" {
-			if cfg, err := config.Load(*configPath); err == nil {
-				root = cfg.Root()
+			cfg, err := config.Load(*configPath)
+			if err != nil {
+				return err
 			}
-		} else if cwd, err := os.Getwd(); err == nil {
-			root = cwd
+			root = cfg.Root()
 		}
 		return runtime.StopWith(root, runtime.StopOptions{PID: *pid})
 	}
@@ -816,7 +798,10 @@ func cmdStop(args []string) error {
 	cfg, err := loadInstance(cf)
 	if err != nil {
 		// No server.pastel — still try orphan recovery for this folder + global orphans.
-		cwd, _ := os.Getwd()
+		cwd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
 		ui.Detail("no server.pastel here — checking for processes in " + cwd)
 		if err := runtime.StopWith(cwd, runtime.StopOptions{Force: *force}); err != nil {
 			return err

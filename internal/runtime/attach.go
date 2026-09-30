@@ -153,7 +153,7 @@ func Attach(root string) error {
 }
 
 func cleanupAfterAttachDeath(root string) {
-	if _, supervisorAlive := readAlivePID(state.SupervisorPIDPath(root)); !supervisorAlive {
+	if _, supervisorAlive := supervisorPID(root); !supervisorAlive {
 		cleanupServerFiles(root)
 	}
 }

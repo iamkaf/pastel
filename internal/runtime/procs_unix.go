@@ -3,7 +3,11 @@
 package runtime
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
+	"strconv"
+	"strings"
 	"syscall"
 )
 
@@ -28,3 +32,17 @@ func processAlive(pid int) bool {
 
 // findServerProcessesWindows is only used on Windows; stub keeps shared callers compiling.
 func findServerProcessesWindows(string) []ProcInfo { return nil }
+
+// processCommandLine returns the full command line of pid, or false when it cannot be read.
+func processCommandLine(pid int) (string, bool) {
+	if raw, err := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid)); err == nil && len(raw) > 0 {
+		return strings.TrimSpace(strings.ReplaceAll(string(raw), "\x00", " ")), true
+	}
+	// macOS has no /proc; -ww keeps ps from truncating long Java command lines.
+	out, err := exec.Command("ps", "-ww", "-o", "command=", "-p", strconv.Itoa(pid)).Output()
+	if err != nil {
+		return "", false
+	}
+	cmd := strings.TrimSpace(string(out))
+	return cmd, cmd != ""
+}

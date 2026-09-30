@@ -7,11 +7,7 @@ import (
 
 // CheckResult is whether a newer Modrinth pack version is available.
 type CheckResult struct {
-	Slug            string
-	PinnedVer       string // empty = tracking channel
-	InstalledVer    string
 	LatestVer       string // version_number
-	LatestID        string
 	LatestName      string // project title
 	LatestMC        string // best-effort game version label
 	UpdateAvailable bool
@@ -39,12 +35,9 @@ func (c *Client) CheckUpdate(slug, baselineVer string) (*CheckResult, error) {
 		return nil, err
 	}
 	res := &CheckResult{
-		Slug:         firstNonEmpty(p.Slug, p.ID),
-		InstalledVer: baselineVer,
-		LatestVer:    latest.VersionNumber,
-		LatestID:     latest.ID,
-		LatestName:   firstNonEmpty(p.Title, p.Slug),
-		LatestMC:     primaryGameVersion(latest),
+		LatestVer:  latest.VersionNumber,
+		LatestName: firstNonEmpty(p.Title, p.Slug),
+		LatestMC:   primaryGameVersion(latest),
 	}
 	if baselineVer == "" {
 		res.UpdateAvailable = true

@@ -46,17 +46,10 @@ func (r Ref) Coordinate(version string) string {
 
 // CheckResult is the outcome of looking for a pack upgrade.
 type CheckResult struct {
-	Ref             Ref
-	InstalledVer    string
-	InstalledMC     string
-	PinnedVer       string
 	LatestVer       string
 	LatestMC        string
 	LatestName      string
-	LatestManifest  *Manifest
 	UpdateAvailable bool
-	// TargetVer is what update would install (latest when newer than installed/pin baseline).
-	TargetVer string
 }
 
 // CheckUpdate queries Maven for the latest release of ref's artifact.
@@ -86,14 +79,9 @@ func CheckUpdate(repositories []string, ref Ref, baselineVer string) (*CheckResu
 		return nil, fmt.Errorf("pack is not a Modrinth .mrpack")
 	}
 	res := &CheckResult{
-		Ref:            ref,
-		InstalledVer:   baselineVer,
-		PinnedVer:      ref.Version,
-		LatestVer:      latest,
-		LatestMC:       m.Minecraft(),
-		LatestName:     m.Name,
-		LatestManifest: m,
-		TargetVer:      latest,
+		LatestVer:  latest,
+		LatestMC:   m.Minecraft(),
+		LatestName: m.Name,
 	}
 	if baselineVer == "" {
 		// Nothing installed — treat any latest as available to install via update,

@@ -1,6 +1,11 @@
 package modrinth
 
-import "testing"
+import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
 
 func TestParsePageURL(t *testing.T) {
 	slug, ver, ok := ParsePageURL("https://modrinth.com/modpack/aristea")
@@ -84,5 +89,29 @@ func TestSelectVersion(t *testing.T) {
 	v, err = selectVersion(vs, "2.0.0")
 	if err != nil || v.ID != "b" {
 		t.Fatalf("%v %+v", err, v)
+	}
+}
+
+func TestResolveModpackPinsTheResolvedVersion(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/project/aristea":
+			fmt.Fprint(w, `{"id":"AAAA","slug":"aristea","title":"Aristea","project_type":"modpack"}`)
+		case "/project/AAAA/version":
+			fmt.Fprint(w, `[{"id":"v2","version_number":"0.2.0","version_type":"release","files":[{"url":"https://cdn.example/aristea.mrpack","filename":"aristea.mrpack","primary":true}]}]`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	client := New()
+	client.APIBase = server.URL
+
+	pack, err := client.ResolveModpack("aristea", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pack.Pin != "modrinth:aristea:0.2.0" {
+		t.Fatalf("latest install must pin the exact version, got %q", pack.Pin)
 	}
 }

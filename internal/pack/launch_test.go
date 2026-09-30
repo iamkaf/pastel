@@ -15,7 +15,7 @@ func TestBuildJavaArgsFabricJar(t *testing.T) {
 	m := &Manifest{
 		Launch: &Launch{Kind: "fabric", Jar: jar},
 	}
-	args, err := m.BuildJavaArgs(dir, "4G")
+	args, err := m.BuildJavaArgs(dir, "4G", nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestBuildJavaArgsNeoForgeArgsFile(t *testing.T) {
 			ArgsFile:    argsPath,
 		},
 	}
-	args, err := m.BuildJavaArgs(dir, "6G")
+	args, err := m.BuildJavaArgs(dir, "6G", nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,6 +74,24 @@ func TestBuildJavaArgsNeoForgeArgsFile(t *testing.T) {
 	}
 	if args[len(args)-1] != "nogui" {
 		t.Fatalf("want nogui last: %v", args)
+	}
+}
+
+func TestBuildJavaArgsHonorsNoGUIAndJVMArgs(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "server.jar"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := &Manifest{Launch: &Launch{Kind: "vanilla", Jar: "server.jar"}}
+	args, err := m.BuildJavaArgs(dir, "4G", []string{"-XX:+UseG1GC"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if args[1] != "-XX:+UseG1GC" {
+		t.Fatalf("want JVM args right after -Xmx: %v", args)
+	}
+	if args[len(args)-1] == "nogui" {
+		t.Fatalf("nogui = false must not pass nogui: %v", args)
 	}
 }
 

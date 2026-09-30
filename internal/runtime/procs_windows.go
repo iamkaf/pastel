@@ -3,6 +3,9 @@
 package runtime
 
 import (
+	"fmt"
+	"os/exec"
+	"strings"
 	"syscall"
 
 	"golang.org/x/sys/windows"
@@ -37,4 +40,15 @@ func terminateProcess(pid int) error {
 	}
 	defer windows.CloseHandle(h)
 	return windows.TerminateProcess(h, 1)
+}
+
+// processCommandLine returns the full command line of pid, or false when it cannot be read.
+func processCommandLine(pid int) (string, bool) {
+	out, err := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-Command",
+		fmt.Sprintf(`(Get-CimInstance Win32_Process -Filter "ProcessId = %d").CommandLine`, pid)).Output()
+	if err != nil {
+		return "", false
+	}
+	cmd := strings.TrimSpace(string(out))
+	return cmd, cmd != ""
 }

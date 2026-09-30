@@ -110,12 +110,6 @@ func NewClient(bases ...string) *Client {
 }
 
 // Base returns the primary (first) repository URL, or "" if none.
-func (cl *Client) Base() string {
-	if cl == nil || len(cl.Bases) == 0 {
-		return ""
-	}
-	return cl.Bases[0]
-}
 
 // Fetch downloads an artifact body from the first repository that has it.
 func (cl *Client) Fetch(c Coordinate, ext string) ([]byte, error) {
@@ -251,8 +245,13 @@ func compareDotted(a, b string) int {
 }
 
 func (cl *Client) getBytes(rawURL string) ([]byte, error) {
-	if _, err := url.Parse(rawURL); err != nil {
+	u, err := url.Parse(rawURL)
+	if err != nil {
 		return nil, err
+	}
+	// The pack decides which jars the server runs, so it must not travel over plain HTTP.
+	if u.Scheme != "https" {
+		return nil, fmt.Errorf("Maven repository URLs must use https://: %s", rawURL)
 	}
 	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
 	if err != nil {
@@ -292,16 +291,4 @@ type metadata struct {
 			Version []string `xml:"version"`
 		} `xml:"versions"`
 	} `xml:"versioning"`
-}
-
-// ArtifactFileName builds the standard Maven file name.
-func ArtifactFileName(artifact, version, classifier, ext string) string {
-	name := artifact + "-" + version
-	if classifier != "" {
-		name += "-" + classifier
-	}
-	if ext == "" {
-		ext = "jar"
-	}
-	return name + "." + ext
 }

@@ -19,10 +19,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout current main
+      - name: Checkout the pushed commit
         uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
         with:
-          ref: main
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Install Go
@@ -45,8 +45,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Only release the commit this job verified. If main moved meanwhile, the
+          # run for the newer commit releases it instead.
+          verified="$(git rev-parse HEAD)"
           git fetch --force origin main --tags
-          git checkout -B main origin/main
+          if [[ "$(git rev-parse origin/main)" != "$verified" ]]; then
+            echo "main moved past $verified; leaving the release to the newer run."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git checkout -B main "$verified"
 
           exact_tag="$(git tag --points-at HEAD --list 'v[0-9]*' --sort=-v:refname | head -n 1)"
           if [[ -n "$exact_tag" ]]; then

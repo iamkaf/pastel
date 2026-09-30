@@ -23,9 +23,7 @@ type Options struct {
 	Java string
 	Xmx  string
 	// Manifest drives multi-loader launch (jar vs @args files).
-	Manifest *pack.Manifest
-	// Jar is optional legacy absolute path; ignored when Manifest.Launch is set.
-	Jar       string
+	Manifest  *pack.Manifest
 	ExtraArgs []string
 	NoGUI     bool
 	Minecraft string
@@ -42,8 +40,9 @@ type Options struct {
 
 // Running reports whether this server's Minecraft process is alive.
 // Prefers the pid file; if missing/stale, scans for orphan Java processes for this root.
+// A live supervisor also counts, because it restarts Java a few seconds after a crash.
 func Running(root string) (pid int, alive bool, err error) {
-	if pid, ok := readAlivePID(state.PIDPath(root)); ok {
+	if pid, ok := serverPID(root); ok {
 		return pid, true, nil
 	}
 	// Recover from lost/corrupt pid files (orphans after failed stop or pid -1 bug).
@@ -51,12 +50,52 @@ func Running(root string) (pid int, alive bool, err error) {
 	if len(orphans) > 0 {
 		return orphans[0], true, nil
 	}
+	if pid, ok := supervisorPID(root); ok {
+		return pid, true, nil
+	}
 	return 0, false, nil
 }
 
-func holdRunning(root string) (pid int, alive bool) {
+// A PID file can outlive its process after a crash or reboot, and the operating
+// system may give the number to an unrelated program. Each tracked PID is trusted
+// only while its command line still matches what Pastel started.
+
+func serverPID(root string) (int, bool) {
+	pid, ok := readAlivePID(state.PIDPath(root))
+	return pid, ok && ownedServerPID(root, pid)
+}
+
+func supervisorPID(root string) (int, bool) {
+	pid, ok := readAlivePID(state.SupervisorPIDPath(root))
+	return pid, ok && ownedHelperPID(pid, "__supervise", root)
+}
+
+func holdPID(root string) (int, bool) {
 	pid, ok := readAlivePID(state.HoldPIDPath(root))
-	return pid, ok
+	return pid, ok && ownedHelperPID(pid, "__hold-fifo", root)
+}
+
+func ownedServerPID(root string, pid int) bool {
+	cmd, ok := processCommandLine(pid)
+	if !ok || !looksLikeMinecraftServerCmd(cmd) {
+		return false
+	}
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		abs = root
+	}
+	if commandContainsPath(cmd, abs) {
+		return true
+	}
+	// Launch arguments are usually relative, so the working directory is the
+	// stronger evidence where the platform exposes it.
+	cwd := readProcCwd(pid)
+	return cwd == "" || cwdMatchesRoot(cwd, abs)
+}
+
+func ownedHelperPID(pid int, subcommand, root string) bool {
+	cmd, ok := processCommandLine(pid)
+	return ok && strings.Contains(cmd, subcommand) && strings.Contains(cmd, root)
 }
 
 func readAlivePID(path string) (pid int, ok bool) {
@@ -106,20 +145,7 @@ func StopWith(root string, opt StopOptions) error {
 		return stopOrphans()
 	}
 
-	infos := findServerProcessInfos(root)
 	pids := serverPIDs(root)
-	// Merge infos into pids if discovery found more
-	seen := map[int]bool{}
-	for _, p := range pids {
-		seen[p] = true
-	}
-	for _, info := range infos {
-		if !seen[info.PID] {
-			pids = append(pids, info.PID)
-			seen[info.PID] = true
-		}
-	}
-
 	if len(pids) == 0 {
 		_ = os.Remove(state.PIDPath(root))
 		stopSupervisor(root)
@@ -155,14 +181,14 @@ func StopWith(root string, opt StopOptions) error {
 		if err := SendCommand(root, "stop"); err != nil {
 			ui.Detail("no live console — signalling the process directly")
 		} else {
-			deadline := time.Now().Add(30 * time.Second)
+			deadline := time.Now().Add(stopGracePeriod)
 			for time.Now().Before(deadline) {
-				if len(serverPIDs(root)) == 0 && len(findServerProcesses(root)) == 0 {
+				if len(serverPIDs(root)) == 0 {
 					cleanupServerFiles(root)
 					ui.OK("Server stopped. See you next time!")
 					return nil
 				}
-				time.Sleep(200 * time.Millisecond)
+				time.Sleep(500 * time.Millisecond)
 			}
 			ui.Warn("Still shutting down… asking a bit harder.")
 		}
@@ -171,26 +197,17 @@ func StopWith(root string, opt StopOptions) error {
 	for _, pid := range serverPIDs(root) {
 		_ = signalPID(pid, syscall.SIGTERM)
 	}
-	for _, pid := range findServerProcesses(root) {
-		_ = signalPID(pid, syscall.SIGTERM)
-	}
-	time.Sleep(3 * time.Second)
+	// SIGTERM runs Minecraft's shutdown hook, which saves the world. Large packs
+	// can take a while, so only force the kill after a generous grace period.
+	deadline := time.Now().Add(stopGracePeriod)
 	left := serverPIDs(root)
-	for _, pid := range findServerProcesses(root) {
-		left = append(left, pid)
+	for len(left) > 0 && time.Now().Before(deadline) {
+		time.Sleep(500 * time.Millisecond)
+		left = serverPIDs(root)
 	}
-	// unique
-	seen = map[int]bool{}
-	var uniq []int
-	for _, p := range left {
-		if !seen[p] && processAlive(p) {
-			seen[p] = true
-			uniq = append(uniq, p)
-		}
-	}
-	if len(uniq) > 0 {
+	if len(left) > 0 {
 		ui.Warn("Forcing shutdown.")
-		for _, pid := range uniq {
+		for _, pid := range left {
 			_ = signalPID(pid, syscall.SIGKILL)
 		}
 	}
@@ -217,10 +234,13 @@ func stopOrphans() error {
 	return nil
 }
 
+// stopGracePeriod is how long a server may take to save and exit before Pastel escalates.
+const stopGracePeriod = 30 * time.Second
+
 func serverPIDs(root string) []int {
 	var pids []int
 	seen := map[int]bool{}
-	if pid, ok := readAlivePID(state.PIDPath(root)); ok {
+	if pid, ok := serverPID(root); ok {
 		pids = append(pids, pid)
 		seen[pid] = true
 	}
@@ -240,14 +260,14 @@ func cleanupServerFiles(root string) {
 }
 
 func stopSupervisor(root string) {
-	if pid, ok := readAlivePID(state.SupervisorPIDPath(root)); ok && pid != os.Getpid() {
+	if pid, ok := supervisorPID(root); ok && pid != os.Getpid() {
 		_ = terminateSupervisor(pid)
 	}
 	_ = os.Remove(state.SupervisorPIDPath(root))
 }
 
 func stopHold(root string) {
-	if pid, ok := holdRunning(root); ok {
+	if pid, ok := holdPID(root); ok {
 		_ = signalPID(pid, syscall.SIGKILL)
 	}
 	_ = os.Remove(state.HoldPIDPath(root))
@@ -256,10 +276,10 @@ func stopHold(root string) {
 
 // Start launches the server in the background (default) or foreground.
 func Start(opt Options) error {
-	if _, alive, _ := Running(opt.Root); alive {
-		return fmt.Errorf("the server is already running — try: ./pastel console  or  ./pastel stop")
-	}
-	if orphans := findServerProcesses(opt.Root); len(orphans) > 0 {
+	// Running also covers discovered processes without a pid file.
+	if _, alive, err := Running(opt.Root); err != nil {
+		return err
+	} else if alive {
 		return fmt.Errorf("the server is already running — try: ./pastel console  or  ./pastel stop")
 	}
 
@@ -270,9 +290,14 @@ func Start(opt Options) error {
 		return err
 	}
 
+	if opt.Manifest == nil {
+		return fmt.Errorf("couldn't find the server program to launch")
+	}
 	// Ensure Forge/NeoForge user_jvm_args.txt exists when referenced.
-	if opt.Manifest != nil && opt.Manifest.Launch != nil && opt.Manifest.Launch.JVMArgsFile != "" {
-		_ = ensureUserJVMArgs(opt.Root, opt.Manifest.Launch.JVMArgsFile, opt.Xmx)
+	if opt.Manifest.Launch != nil && opt.Manifest.Launch.JVMArgsFile != "" {
+		if err := ensureUserJVMArgs(opt.Root, opt.Manifest.Launch.JVMArgsFile, opt.Xmx); err != nil {
+			return fmt.Errorf("couldn't write %s: %w", opt.Manifest.Launch.JVMArgsFile, err)
+		}
 	}
 
 	java := opt.Java
@@ -284,35 +309,7 @@ func Start(opt Options) error {
 		xmx = "4G"
 	}
 
-	var args []string
-	var err error
-	if opt.Manifest != nil {
-		args, err = opt.Manifest.BuildJavaArgs(opt.Root, xmx)
-		if err != nil {
-			// Fall back to legacy jar path
-			if opt.Jar != "" {
-				args = []string{"-Xmx" + xmx}
-				args = append(args, opt.ExtraArgs...)
-				args = append(args, "-jar", opt.Jar)
-				if opt.NoGUI {
-					args = append(args, "nogui")
-				}
-				err = nil
-			}
-		} else if len(opt.ExtraArgs) > 0 {
-			// Insert extra JVM args after -Xmx
-			args = append([]string{args[0]}, append(opt.ExtraArgs, args[1:]...)...)
-		}
-	} else if opt.Jar != "" {
-		args = []string{"-Xmx" + xmx}
-		args = append(args, opt.ExtraArgs...)
-		args = append(args, "-jar", opt.Jar)
-		if opt.NoGUI {
-			args = append(args, "nogui")
-		}
-	} else {
-		return fmt.Errorf("couldn't find the server program to launch")
-	}
+	args, err := opt.Manifest.BuildJavaArgs(opt.Root, xmx, opt.ExtraArgs, opt.NoGUI)
 	if err != nil {
 		return err
 	}
@@ -596,17 +593,6 @@ func padRunCmd(s string) string {
 		return s
 	}
 	return s + strings.Repeat(" ", w-len(s))
-}
-
-// ResolveJar returns an absolute jar path.
-func ResolveJar(root, jar string) string {
-	if jar == "" {
-		return ""
-	}
-	if filepath.IsAbs(jar) {
-		return jar
-	}
-	return filepath.Join(root, jar)
 }
 
 // EnsureEULA writes eula.txt with eula=true so the server can start without a manual edit.

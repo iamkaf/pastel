@@ -56,7 +56,7 @@ type LoadedMrpack struct {
 	DirPath string
 }
 
-// IsMrpackIndexJSON reports whether raw looks like modrinth.index.json (not Pastel schema).
+// IsMrpackIndexJSON reports whether raw looks like modrinth.index.json.
 func IsMrpackIndexJSON(data []byte) bool {
 	trim := bytes.TrimSpace(data)
 	if len(trim) == 0 || trim[0] != '{' {
@@ -65,15 +65,11 @@ func IsMrpackIndexJSON(data []byte) bool {
 	// Quick structural check without full parse.
 	var probe struct {
 		FormatVersion int    `json:"formatVersion"`
-		SchemaVersion int    `json:"schemaVersion"`
 		VersionID     string `json:"versionId"`
 		Game          string `json:"game"`
 	}
 	if err := json.Unmarshal(trim, &probe); err != nil {
 		return false
-	}
-	if probe.SchemaVersion != 0 && probe.FormatVersion == 0 {
-		return false // Pastel pack
 	}
 	return probe.FormatVersion > 0 || probe.VersionID != "" || strings.EqualFold(probe.Game, "minecraft")
 }
@@ -136,6 +132,12 @@ func validateMrpackPath(p string) error {
 	}
 	if path.Clean(p) != p {
 		return fmt.Errorf("path must be clean")
+	}
+	// A pack never writes the world or Pastel's own files. Folding case also covers
+	// case-insensitive filesystems, where World/ is the same folder as world/.
+	switch strings.ToLower(strings.SplitN(p, "/", 2)[0]) {
+	case "world", ".pastel", "server.pastel":
+		return fmt.Errorf("path %q is reserved for the server", p)
 	}
 	return nil
 }
@@ -373,7 +375,7 @@ func (l *LoadedMrpack) ListOverrideModJars(side string) ([]string, error) {
 	} else if l.DirPath != "" {
 		for _, layer := range layers {
 			src := filepath.Join(l.DirPath, layer)
-			_ = filepath.Walk(src, func(path string, info os.FileInfo, walkErr error) error {
+			err := filepath.Walk(src, func(path string, info os.FileInfo, walkErr error) error {
 				if walkErr != nil || info == nil || info.IsDir() {
 					return walkErr
 				}
@@ -384,6 +386,10 @@ func (l *LoadedMrpack) ListOverrideModJars(side string) ([]string, error) {
 				rels = append(rels, filepath.ToSlash(rel))
 				return nil
 			})
+			// A missing layer is normal; anything else would let prune delete override jars.
+			if err != nil && !os.IsNotExist(err) {
+				return nil, err
+			}
 		}
 	}
 	return OverrideModJars(rels), nil
@@ -518,9 +524,11 @@ func copyFileToRoot(src string, root *os.Root, dest string) error {
 	if err != nil {
 		return err
 	}
-	defer out.Close()
-	_, err = io.Copy(out, in)
-	return err
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 // DecodeMrpackBytes loads an mrpack from zip bytes (must contain modrinth.index.json).

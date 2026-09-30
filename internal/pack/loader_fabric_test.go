@@ -81,3 +81,32 @@ func TestEnsureFabricLoaderUsesDeps(t *testing.T) {
 		t.Fatal("stale should be gone")
 	}
 }
+
+func TestEnsureLoaderUsesTheExactNeoForgeVersion(t *testing.T) {
+	root := t.TempDir()
+	// 21.1.99 sorts after 21.1.200 as text; neither must stand in for the pack's version.
+	for _, ver := range []string{"21.1.99", "21.1.200"} {
+		dir := filepath.Join(root, "libraries", "net", "neoforged", "neoforge", ver)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, PreferredArgsFileName()), []byte("-p libraries\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m := &Manifest{Dependencies: map[string]string{"minecraft": "1.21.1", "neoforge": "21.1.200"}}
+	changed, err := EnsureLoader(root, m, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed {
+		t.Fatal("an installed matching loader must be reused")
+	}
+	want := "libraries/net/neoforged/neoforge/21.1.200/" + PreferredArgsFileName()
+	if m.Launch == nil || m.Launch.ArgsFile != want {
+		t.Fatalf("launch = %+v, want args file %s", m.Launch, want)
+	}
+	if _, ok := argsFileLaunch(root, "neoforge", "21.1.300"); ok {
+		t.Fatal("a different installed version must not satisfy a pack upgrade")
+	}
+}

@@ -78,14 +78,19 @@ func isTrue(v string) bool {
 func unescapeMOTD(s string) string {
 	s = strings.ReplaceAll(s, "\\n", " ")
 	s = strings.ReplaceAll(s, "\\u00a7", "§")
-	// Strip section-sign color codes for plain terminal display
+	// Strip section-sign color codes for plain terminal display. § is two bytes in
+	// UTF-8, so walk runes rather than bytes.
 	var b strings.Builder
-	for i := 0; i < len(s); i++ {
-		if s[i] == '§' && i+1 < len(s) {
-			i++ // skip code char
-			continue
+	skip := false
+	for _, r := range s {
+		switch {
+		case skip:
+			skip = false
+		case r == '§':
+			skip = true
+		default:
+			b.WriteRune(r)
 		}
-		b.WriteByte(s[i])
 	}
 	out := strings.TrimSpace(b.String())
 	if out == "" {

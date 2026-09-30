@@ -26,21 +26,20 @@ func TestValidate(t *testing.T) {
 	}
 }
 
-func TestValidateAllowsWorldPath(t *testing.T) {
-	m := &Manifest{
-		Name:    "x",
-		Version: "1",
-		Files: []File{{
-			Path:      "world/foo",
-			Hashes:    map[string]string{"sha256": "aa"},
-			Downloads: []string{"https://example.com/foo"},
-		}},
-	}
-	if err := m.Validate(); err != nil {
-		t.Fatal(err)
-	}
-	if m.Files[0].Path != "world/foo" {
-		t.Fatal("expected path stored")
+func TestValidateRejectsReservedServerPaths(t *testing.T) {
+	for _, path := range []string{"world/level.dat", "World/region/r.0.0.mca", ".pastel/state.json", "server.pastel"} {
+		m := &Manifest{
+			Name:    "x",
+			Version: "1",
+			Files: []File{{
+				Path:      path,
+				Hashes:    map[string]string{"sha256": "aa"},
+				Downloads: []string{"https://example.com/foo"},
+			}},
+		}
+		if err := m.Validate(); err == nil {
+			t.Fatalf("expected %q to be reserved", path)
+		}
 	}
 }
 

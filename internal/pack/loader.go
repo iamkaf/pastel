@@ -19,14 +19,14 @@ import (
 // fabric-server-mc.{mc}-loader.{loader}-launcher.{installer}.jar
 var fabricLauncherRE = regexp.MustCompile(`^fabric-server-mc\.(.+)-loader\.(.+)-launcher\.(.+)\.jar$`)
 
-// EnsureLoader installs loader launch artifacts from dependencies when missing,
-// and sets m.Launch so the server can start. Safe to call after mrpack file sync
-// and overrides (args-file loaders may already be present).
+// EnsureLoader installs the loader the pack declares when it is missing and sets
+// m.Launch so the server can start. Safe to call after mrpack file sync and overrides.
 //
 // javaBin is optional; when empty, a managed JRE is ensured for installer runs.
 //
-// Fabric: always aligns the root fabric-server jar with dependencies.minecraft +
-// fabric-loader (upgrades replace an older launcher left from a previous pack).
+// An installed launcher is reused only when it matches the exact Minecraft and loader
+// versions in the pack's dependencies, so pack upgrades and loader switches install the
+// launcher the pack asks for instead of starting a stale one.
 func EnsureLoader(root string, m *Manifest, javaBin string) (changed bool, err error) {
 	if m == nil {
 		return false, fmt.Errorf("manifest is required")
@@ -34,68 +34,46 @@ func EnsureLoader(root string, m *Manifest, javaBin string) (changed bool, err e
 	kind := m.ResolvedKind()
 	mc := m.Minecraft()
 
-	// Fabric is version-sensitive: never reuse a mismatched launcher after a pack upgrade.
-	if kind == "fabric" {
-		return ensureFabricLoader(root, m)
-	}
-
-	// Already have a working launch config pointing at an existing file.
-	if m.Launch != nil {
-		if m.Launch.Jar != "" {
-			p := filepath.Join(root, filepath.FromSlash(m.Launch.Jar))
-			if st, err := os.Stat(p); err == nil && !st.IsDir() {
-				return false, nil
-			}
-			p = filepath.Join(root, filepath.Base(m.Launch.Jar))
-			if st, err := os.Stat(p); err == nil && !st.IsDir() {
-				m.Launch.Jar = filepath.Base(m.Launch.Jar)
-				return false, nil
-			}
-		}
-		if m.Launch.ArgsFile != "" {
-			p := filepath.Join(root, filepath.FromSlash(m.Launch.ArgsFile))
-			if st, err := os.Stat(p); err == nil && !st.IsDir() {
-				return false, nil
-			}
-		}
-	}
-
-	// Prefer detecting an already-installed production tree (overrides, prior run).
-	if launch, ok := detectExistingLaunch(root); ok {
-		m.Launch = &launch
-		return false, nil
-	}
-
 	switch kind {
-	case "quilt":
-		return false, fmt.Errorf("quilt loader install is not automatic yet; include quilt-server-launch.jar in the pack or overrides")
+	case "fabric":
+		return ensureFabricLoader(root, m)
 	case "neoforge", "forge":
 		ver := m.Dependencies[kind]
 		if ver == "" {
 			return false, fmt.Errorf("%s pack needs dependencies.%s", kind, kind)
 		}
+		artVer := installerArtifactVersion(kind, mc, ver)
+		if l, ok := argsFileLaunch(root, kind, artVer); ok {
+			m.Launch = &l
+			return false, nil
+		}
+		// Forge before 1.17 has no args file; a pack may ship its server jar instead.
+		if name, found, ok := findGenericServerJarName(root); ok && found == kind {
+			m.Launch = &Launch{Kind: kind, Jar: name}
+			return false, nil
+		}
 		java, err := resolveInstallerJava(root, mc, javaBin)
 		if err != nil {
 			return false, err
 		}
-		launch, did, err := ensureForgeFamilyServer(root, kind, ver, mc, java)
+		launch, err := installForgeFamilyServer(root, kind, artVer, java)
 		if err != nil {
 			return false, err
 		}
 		m.Launch = &launch
-		return did, nil
-	case "vanilla":
-		if jar := findExistingJar(root, "server.jar"); jar != "" {
-			m.Launch = &Launch{Kind: "vanilla", Jar: filepath.Base(jar)}
+		return true, nil
+	case "quilt":
+		if findExistingJar(root, "quilt-server-launch.jar") != "" {
+			m.Launch = &Launch{Kind: "quilt", Jar: "quilt-server-launch.jar"}
+			return false, nil
+		}
+		return false, fmt.Errorf("quilt loader install is not automatic yet; include quilt-server-launch.jar in the pack or overrides")
+	default:
+		if findExistingJar(root, "server.jar") != "" {
+			m.Launch = &Launch{Kind: "vanilla", Jar: "server.jar"}
 			return false, nil
 		}
 		return false, fmt.Errorf("vanilla pack needs server.jar in the pack or overrides")
-	default:
-		if jar := findExistingJar(root, commonServerJarNames("vanilla")...); jar != "" {
-			m.Launch = &Launch{Kind: "vanilla", Jar: filepath.Base(jar)}
-			return false, nil
-		}
-		return false, fmt.Errorf("pack has no loader dependencies and no server jar was found")
 	}
 }
 
@@ -126,28 +104,16 @@ func resolveInstallerJava(root, mc, override string) (string, error) {
 	return jre.Ensure(root, jre.RequireMajor(mc), override)
 }
 
-// ensureForgeFamilyServer downloads the official installer and runs --installServer.
-func ensureForgeFamilyServer(root, kind, version, mc, java string) (Launch, bool, error) {
-	if l, ok := findArgsFileLaunch(root); ok {
-		return l, false, nil
-	}
-	artVer := installerArtifactVersion(kind, mc, version)
-	installerURL := installerDownloadURL(kind, artVer)
+// installForgeFamilyServer downloads the official installer and runs --installServer.
+func installForgeFamilyServer(root, kind, artVer, java string) (Launch, error) {
 	cacheDir := filepath.Join(root, ".pastel", "cache", "installers")
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
-		return Launch{}, false, err
+		return Launch{}, err
 	}
-	installerName := fmt.Sprintf("%s-%s-installer.jar", kind, artVer)
-	// NeoForge/Forge maven filenames use artifact id, not kind for neoforge
-	if kind == "neoforge" {
-		installerName = fmt.Sprintf("neoforge-%s-installer.jar", artVer)
-	} else {
-		installerName = fmt.Sprintf("forge-%s-installer.jar", artVer)
-	}
-	installerPath := filepath.Join(cacheDir, installerName)
+	installerPath := filepath.Join(cacheDir, fmt.Sprintf("%s-%s-installer.jar", kind, artVer))
 	if st, err := os.Stat(installerPath); err != nil || st.Size() == 0 {
-		if err := downloadFile(installerURL, installerPath); err != nil {
-			return Launch{}, false, fmt.Errorf("download %s installer: %w", kind, err)
+		if err := downloadFile(installerDownloadURL(kind, artVer), installerPath); err != nil {
+			return Launch{}, fmt.Errorf("download %s installer: %w", kind, err)
 		}
 	}
 
@@ -160,26 +126,22 @@ func ensureForgeFamilyServer(root, kind, version, mc, java string) (Launch, bool
 		if len(msg) > 2000 {
 			msg = msg[len(msg)-2000:]
 		}
-		return Launch{}, false, fmt.Errorf("%s installer failed: %v\n%s", kind, err, msg)
+		return Launch{}, fmt.Errorf("%s installer failed: %w\n%s", kind, err, msg)
 	}
 
 	// Ensure a minimal user_jvm_args.txt (memory still overridden by Pastel -Xmx).
 	ujvm := filepath.Join(root, "user_jvm_args.txt")
 	if st, err := os.Stat(ujvm); err != nil || st.IsDir() {
-		_ = os.WriteFile(ujvm, []byte("# Managed by Pastel — memory is set via server.pastel\n"), 0o644)
+		if err := os.WriteFile(ujvm, []byte("# Managed by Pastel — memory is set via server.pastel\n"), 0o644); err != nil {
+			return Launch{}, err
+		}
 	}
 
-	l, ok := findArgsFileLaunch(root)
+	l, ok := argsFileLaunch(root, kind, artVer)
 	if !ok {
-		// Expected path even if scan order fails
-		argsRel := installerArgsFileRel(kind, artVer)
-		p := filepath.Join(root, filepath.FromSlash(argsRel))
-		if st, err := os.Stat(p); err != nil || st.IsDir() {
-			return Launch{}, false, fmt.Errorf("%s installer did not create %s", kind, argsRel)
-		}
-		l = Launch{Kind: kind, ArgsFile: argsRel, JVMArgsFile: "user_jvm_args.txt"}
+		return Launch{}, fmt.Errorf("%s installer did not create an args file for %s", kind, artVer)
 	}
-	return l, true, nil
+	return l, nil
 }
 
 func installerArtifactVersion(kind, mc, version string) string {
@@ -204,51 +166,23 @@ func installerDownloadURL(kind, artVer string) string {
 	}
 }
 
-func installerArgsFileRel(kind, artVer string) string {
-	base := PreferredArgsFileName()
-	switch kind {
-	case "neoforge":
-		return filepath.ToSlash(filepath.Join("libraries", "net", "neoforged", "neoforge", artVer, base))
-	default:
-		return filepath.ToSlash(filepath.Join("libraries", "net", "minecraftforge", "forge", artVer, base))
+// argsFileLaunch finds the installed args file for exactly this loader version.
+func argsFileLaunch(root, kind, artVer string) (Launch, bool) {
+	dir := "libraries/net/minecraftforge/forge/" + artVer
+	if kind == "neoforge" {
+		dir = "libraries/net/neoforged/neoforge/" + artVer
 	}
-}
-
-func detectExistingLaunch(root string) (Launch, bool) {
-	// NeoForge / Forge args files
-	if l, ok := findArgsFileLaunch(root); ok {
-		return l, true
-	}
-	// Fabric launcher without version check — only used when pack has no fabric deps path
-	if name, ok := findFabricLauncherName(root); ok {
-		return Launch{Kind: "fabric", Jar: name}, true
-	}
-	for _, n := range []string{"quilt-server-launch.jar"} {
-		if findExistingJar(root, n) != "" {
-			return Launch{Kind: "quilt", Jar: n}, true
+	for _, base := range []string{PreferredArgsFileName(), "unix_args.txt", "win_args.txt"} {
+		rel := dir + "/" + base
+		if st, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel))); err == nil && !st.IsDir() {
+			l := Launch{Kind: kind, ArgsFile: rel}
+			if st, err := os.Stat(filepath.Join(root, "user_jvm_args.txt")); err == nil && !st.IsDir() {
+				l.JVMArgsFile = "user_jvm_args.txt"
+			}
+			return l, true
 		}
-	}
-	if name, kind, ok := findGenericServerJarName(root); ok {
-		return Launch{Kind: kind, Jar: name}, true
 	}
 	return Launch{}, false
-}
-
-func findFabricLauncherName(root string) (string, bool) {
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return "", false
-	}
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		n := e.Name()
-		if strings.HasPrefix(n, "fabric-server-") && strings.HasSuffix(n, ".jar") {
-			return n, true
-		}
-	}
-	return "", false
 }
 
 // findFabricLauncherMatching returns a fabric-server jar for the given MC + loader versions.
@@ -300,50 +234,7 @@ func removeOtherFabricLaunchers(root, keep string) {
 	}
 }
 
-func findArgsFileLaunch(root string) (Launch, bool) {
-	type hit struct {
-		kind, ver, argsRel string
-	}
-	var hits []hit
-
-	scan := func(libRoot, kind, groupPath, artifact string) {
-		entries, err := os.ReadDir(libRoot)
-		if err != nil {
-			return
-		}
-		for _, e := range entries {
-			if !e.IsDir() {
-				continue
-			}
-			ver := e.Name()
-			for _, base := range []string{PreferredArgsFileName(), "unix_args.txt", "win_args.txt"} {
-				rel := filepath.ToSlash(filepath.Join("libraries", groupPath, artifact, ver, base))
-				if st, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel))); err == nil && !st.IsDir() {
-					hits = append(hits, hit{kind: kind, ver: ver, argsRel: rel})
-					break
-				}
-			}
-		}
-	}
-	scan(filepath.Join(root, "libraries", "net", "neoforged", "neoforge"), "neoforge", "net/neoforged", "neoforge")
-	scan(filepath.Join(root, "libraries", "net", "minecraftforge", "forge"), "forge", "net/minecraftforge", "forge")
-
-	if len(hits) == 0 {
-		return Launch{}, false
-	}
-	h := hits[len(hits)-1]
-	for _, c := range hits {
-		if c.kind == "neoforge" {
-			h = c
-		}
-	}
-	l := Launch{Kind: h.kind, ArgsFile: h.argsRel}
-	if st, err := os.Stat(filepath.Join(root, "user_jvm_args.txt")); err == nil && !st.IsDir() {
-		l.JVMArgsFile = "user_jvm_args.txt"
-	}
-	return l, true
-}
-
+// findGenericServerJarName finds a pack-provided Forge or NeoForge server jar.
 func findGenericServerJarName(root string) (name, kind string, ok bool) {
 	entries, err := os.ReadDir(root)
 	if err != nil {

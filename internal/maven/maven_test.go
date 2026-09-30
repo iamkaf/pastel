@@ -44,15 +44,8 @@ func TestNormalizeRepositories(t *testing.T) {
 	}
 }
 
-func TestNewClientBases(t *testing.T) {
-	cl := NewClient("https://a.example", "https://b.example")
-	if cl.Base() != "https://a.example" || len(cl.Bases) != 2 {
-		t.Fatalf("%+v", cl)
-	}
-	cl = NewClient()
-	if cl.Base() != "" || len(cl.Bases) != 0 {
-		t.Fatalf("empty client should have no bases: %+v", cl)
-	}
+func TestClientWithoutRepositoriesFails(t *testing.T) {
+	cl := NewClient()
 	if _, err := cl.FetchPack(Coordinate{Group: "g", Artifact: "a", Version: "1"}); err == nil {
 		t.Fatal("expected ErrNoRepositories")
 	}

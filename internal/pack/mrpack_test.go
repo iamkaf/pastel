@@ -92,27 +92,6 @@ func TestValidateMrpackPathIsPortable(t *testing.T) {
 	}
 }
 
-func TestIsMrpackIndexJSON(t *testing.T) {
-	if !IsMrpackIndexJSON([]byte(`{"formatVersion":1,"versionId":"1","name":"n","files":[]}`)) {
-		t.Fatal("expected mrpack")
-	}
-	if IsMrpackIndexJSON([]byte(`{"schemaVersion":1,"name":"n","version":"1","files":[]}`)) {
-		t.Fatal("legacy Pastel schema should not count as mrpack")
-	}
-}
-
-func TestResolveRejectsLegacyPastelJSON(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "pack.json")
-	raw := `{"schemaVersion":1,"name":"n","version":"1","files":[]}`
-	if err := os.WriteFile(path, []byte(raw), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := Resolve(ResolveSpec{Raw: path, Side: SideServer}); err == nil {
-		t.Fatal("expected legacy Pastel JSON to be rejected")
-	}
-}
-
 func TestMrpackZipOverrides(t *testing.T) {
 	dir := t.TempDir()
 	zipPath := filepath.Join(dir, "test.mrpack")
@@ -180,8 +159,8 @@ func TestResolveLocalMrpack(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Format != "mrpack" || res.Mrpack == nil {
-		t.Fatalf("format=%s mrpack=%v", res.Format, res.Mrpack != nil)
+	if res.Mrpack == nil {
+		t.Fatal("expected a loaded mrpack")
 	}
 	if res.Manifest.Name != "Zip Pack" {
 		t.Fatalf("name %s", res.Manifest.Name)

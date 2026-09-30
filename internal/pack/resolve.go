@@ -33,13 +33,11 @@ type ResolveSpec struct {
 type Resolved struct {
 	Manifest   *Manifest
 	Coordinate string
-	Format     string
 	// Mrpack is set when overrides can be applied from a zip or directory.
 	Mrpack *LoadedMrpack
 }
 
 // Resolve loads a pack from a Maven coordinate, file path, file: URL, or https URL.
-// Preferred pack format is Modrinth .mrpack; legacy Pastel JSON remains supported.
 func Resolve(spec ResolveSpec) (*Resolved, error) {
 	raw := strings.TrimSpace(spec.Raw)
 	if raw == "" {
@@ -204,6 +202,10 @@ func resolvePath(path, coord, side string) (*Resolved, error) {
 }
 
 func resolveURL(raw, cacheDir, side string) (*Resolved, error) {
+	// The pack decides which jars the server runs, so it must not travel over plain HTTP.
+	if !strings.HasPrefix(strings.ToLower(raw), "https://") {
+		return nil, fmt.Errorf("pack URLs must use https://: %s", raw)
+	}
 	data, err := httpGet(raw)
 	if err != nil {
 		return nil, fmt.Errorf("fetch pack %s: %w", raw, err)
@@ -244,14 +246,19 @@ func resolveBytes(data []byte, coord, cacheDir, side string) (*Resolved, error) 
 	// mrpack zip
 	if isZipBytes(data) {
 		if hasMrpackIndex(data) {
-			path, err := cachePackBytes(cacheDir, coord, data, ".mrpack")
-			if err != nil {
-				// Fall back to memory-only index (no overrides from zip path)
-				loaded, err2 := DecodeMrpackBytes(data)
-				if err2 != nil {
+			if cacheDir == "" {
+				// Callers that only inspect the index (such as install's probe) skip the cache.
+				loaded, err := DecodeMrpackBytes(data)
+				if err != nil {
 					return nil, err
 				}
 				return mrpackResolved(loaded, coord, side), nil
+			}
+			// Overrides are read from the cached zip, so a pack that can't be cached
+			// must fail loudly instead of silently skipping them.
+			path, err := cachePackBytes(cacheDir, data, ".mrpack")
+			if err != nil {
+				return nil, fmt.Errorf("cache pack: %w", err)
 			}
 			loaded, err := LoadMrpack(path)
 			if err != nil {
@@ -279,22 +286,16 @@ func mrpackResolved(loaded *LoadedMrpack, coord, side string) *Resolved {
 	return &Resolved{
 		Manifest:   loaded.ToManifest(side),
 		Coordinate: coord,
-		Format:     "mrpack",
 		Mrpack:     loaded,
 	}
 }
 
-func cachePackBytes(cacheDir, coord string, data []byte, ext string) (string, error) {
-	if cacheDir == "" {
-		return "", fmt.Errorf("no cache dir")
-	}
+func cachePackBytes(cacheDir string, data []byte, ext string) (string, error) {
 	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
 		return "", err
 	}
 	sum := sha256.Sum256(data)
 	name := hex.EncodeToString(sum[:16]) + ext
-	// also fingerprint coord lightly for debugging
-	_ = coord
 	path := filepath.Join(cacheDir, name)
 	if st, err := os.Stat(path); err == nil && st.Size() == int64(len(data)) {
 		return path, nil
